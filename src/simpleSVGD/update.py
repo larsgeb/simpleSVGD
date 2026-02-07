@@ -5,7 +5,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import numpy as np
 import tqdm.auto as _tqdm_auto
 
-from .kernels import rbf_kernel
+from .kernels import rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
 
@@ -28,6 +28,8 @@ def update(
     sigma_prior_alpha: float = 2.0,
     sigma_prior_beta: Optional[float] = None,
     n_data_samples: Optional[int] = None,
+    # --- Kernel ---
+    kernel: Optional[str] = None,
     # --- Bounds ---
     bounds: Optional[Tuple[float, float]] = None,
     # --- Callback and control ---
@@ -82,6 +84,10 @@ def update(
         ``(sigma_prior_alpha - 1) * data_sigma**2``.
     n_data_samples : int or None
         Total number of data samples (needed for hierarchical sigma update).
+    kernel : str or None
+        Kernel type. ``None`` or ``"rbf"`` for standard RBF. ``"rbf_normalized"``
+        for per-dimension normalized RBF, recommended for high-dimensional
+        parameter spaces (d > ~100) where standard RBF repulsion vanishes.
     bounds : tuple or None
         ``(lower, upper)`` bounds for particle clipping.
     callback : callable or None
@@ -100,6 +106,16 @@ def update(
     """
     if x0 is None or gradient_fn is None:
         raise ValueError("x0 and gradient_fn cannot be None!")
+
+    # Resolve kernel function
+    if kernel is None or kernel == "rbf":
+        kernel_fn = rbf_kernel
+    elif kernel == "rbf_normalized":
+        kernel_fn = rbf_kernel_normalized
+    elif callable(kernel):
+        kernel_fn = kernel
+    else:
+        raise ValueError(f"Unknown kernel: {kernel!r}")
 
     # Determine whether gradient_fn returns misfits
     needs_misfits = data_sigma is not None or estimate_sigma
@@ -301,8 +317,8 @@ def update(
             else:
                 precond_grads = all_grads
 
-            # Compute RBF kernel
-            kxy, dxkxy = rbf_kernel(particles, h=bandwidth)
+            # Compute kernel
+            kxy, dxkxy = kernel_fn(particles, h=bandwidth)
 
             # Apply sigma scaling to the attractive term
             if current_sigma is not None:

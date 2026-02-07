@@ -11,7 +11,7 @@ import numpy as _numpy
 import tqdm.auto as _tqdm_auto
 from typing import Callable as _Callable, List as _List, Tuple as _Tuple
 
-from .kernels import rbf_kernel as _rbf_kernel
+from .kernels import rbf_kernel as _rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
 from .update import update

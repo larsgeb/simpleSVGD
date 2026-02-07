@@ -1,7 +1,31 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel",
-    "versioneer-518"
-]
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "simpleSVGD"
+version = "1.0.0"
+description = "Stein Variational Gradient Descent with optional L-BFGS preconditioning"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "Lars Gebraad", email = "lars.gebraad@erdw.ethz.ch"},
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+torch = ["torch"]
+viz = ["matplotlib"]
+
+[project.urls]
+Homepage = "https://github.com/larsgeb/simpleSVGD"
+Issues = "https://github.com/larsgeb/simpleSVGD/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

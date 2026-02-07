@@ -10,6 +10,11 @@ def rbf_kernel(theta, h=-1):
         h = _numpy.median(pairwise_dists)
         h = _numpy.sqrt(0.5 * h / _numpy.log(theta.shape[0] + 1))
 
+    # Guard against zero bandwidth (all particles identical)
+    if h < 1e-30:
+        n = theta.shape[0]
+        return _numpy.ones((n, n)), _numpy.zeros_like(theta)
+
     # compute the rbf kernel
     Kxy = _numpy.exp(-pairwise_dists / h ** 2 / 2)
 

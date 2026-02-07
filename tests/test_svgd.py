@@ -121,6 +121,61 @@ class TestBananaDistribution:
         assert abs(np.std(residual) - self.s2) < 0.5
 
 
+class TestHighDimensionalGaussian:
+    """Normalized kernel should prevent particle collapse in d=500 dimensions."""
+
+    def setup_method(self):
+        self.d = 500
+        self.true_mean = np.zeros(self.d)
+
+        def grad_fn(x):
+            return x - self.true_mean
+
+        self.grad_fn = grad_fn
+
+    def test_normalized_kernel_maintains_spread(self):
+        np.random.seed(42)
+        x0 = np.random.normal(0, 1, (30, self.d))
+        state = simpleSVGD.update(
+            x0, self.grad_fn, n_iter=200, stepsize=0.3,
+            kernel="rbf_normalized", disable_progressbar=True,
+        )
+        p = state.particles
+        # Particles should not have collapsed: std per dimension should be > 0.1
+        per_dim_std = np.std(p, axis=0)
+        median_std = np.median(per_dim_std)
+        assert median_std > 0.1, f"Particles collapsed: median per-dim std = {median_std:.4f}"
+        # Mean per dimension should be near zero (norm scales as sqrt(d/n))
+        assert np.max(np.abs(np.mean(p, axis=0))) < 0.5
+
+    def test_standard_kernel_collapses(self):
+        """Standard RBF kernel loses repulsion in high dimensions."""
+        np.random.seed(42)
+        x0 = np.random.normal(0, 1, (30, self.d))
+        state = simpleSVGD.update(
+            x0, self.grad_fn, n_iter=200, stepsize=0.3,
+            kernel="rbf", disable_progressbar=True,
+        )
+        p = state.particles
+        # Standard kernel: particles should have much less spread
+        per_dim_std_standard = np.median(np.std(p, axis=0))
+
+        # Now run with normalized kernel
+        np.random.seed(42)
+        x0 = np.random.normal(0, 1, (30, self.d))
+        state_norm = simpleSVGD.update(
+            x0, self.grad_fn, n_iter=200, stepsize=0.3,
+            kernel="rbf_normalized", disable_progressbar=True,
+        )
+        per_dim_std_normalized = np.median(np.std(state_norm.particles, axis=0))
+
+        # Normalized kernel should maintain more spread
+        assert per_dim_std_normalized > per_dim_std_standard * 0.8, (
+            f"Normalized ({per_dim_std_normalized:.4f}) should have more spread "
+            f"than standard ({per_dim_std_standard:.4f})"
+        )
+
+
 class TestGaussianMixture:
     """Bimodal: 0.5*N([-3,0], I) + 0.5*N([3,0], I)."""
 

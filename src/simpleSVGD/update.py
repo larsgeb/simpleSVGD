@@ -1,5 +1,6 @@
 """Core SVGD update function with optional preconditioning and hierarchical sigma."""
 
+import math as _math
 from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -48,7 +49,12 @@ def update(
     Parameters
     ----------
     x0 : np.ndarray
-        Initial particle positions, shape ``(n_particles, n_dims)``.
+        Initial particle positions, shape ``(n_particles, n_dims)``. Its
+        dtype (e.g. ``float32`` or ``float64``) is preserved throughout the
+        run -- pass ``float32`` particles to run the whole optimization in
+        single precision. ``gradient_fn`` should return gradients in the
+        same dtype; if it doesn't, they are cast to ``x0``'s dtype before
+        use, so a careless ``gradient_fn`` can't silently upcast the run.
     gradient_fn : callable
         Computes gradients of the negative log-probability. Accepts particles
         of shape ``(n_particles, n_dims)`` and returns gradients of the same
@@ -155,7 +161,7 @@ def update(
             lbfgs_states = resume_from.lbfgs_states
         elif use_lbfgs:
             lbfgs_states = [
-                make_lbfgs_state(particles.shape[1], m=lbfgs_history)
+                make_lbfgs_state(particles.shape[1], m=lbfgs_history, dtype=particles.dtype)
                 for _ in range(n_particles)
             ]
         else:
@@ -183,7 +189,7 @@ def update(
 
         if use_lbfgs:
             lbfgs_states = [
-                make_lbfgs_state(particles.shape[1], m=lbfgs_history)
+                make_lbfgs_state(particles.shape[1], m=lbfgs_history, dtype=particles.dtype)
                 for _ in range(n_particles)
             ]
         else:
@@ -254,6 +260,12 @@ def update(
             else:
                 all_grads = result
                 misfits = None
+            # gradient_fn is user-supplied and easy to write in a way that
+            # silently returns float64 (e.g. building constants with
+            # np.zeros(d) instead of matching particles' dtype) -- without
+            # this, that alone would upcast the whole particle array on the
+            # first `particles + displacement` below.
+            all_grads = np.asarray(all_grads, dtype=particles.dtype)
 
             # Deferred L-BFGS curvature update
             if use_lbfgs and prev_particles is not None:
@@ -334,10 +346,15 @@ def update(
             # Compute step size
             if step_schedule == "robbins-monro":
                 attr_max = np.max(np.abs(attractive)) / n_particles
+                # math.sqrt (not np.sqrt) on this plain-Python scalar: np.sqrt
+                # of a bare int/float with no array context always returns
+                # float64, which would silently upcast `step` and then
+                # `displacement` even when phi is float32.
+                decay = _math.sqrt(1.0 + iteration)
                 if attr_max > 0:
-                    step = stepsize / (attr_max * np.sqrt(1.0 + iteration))
+                    step = stepsize / (attr_max * decay)
                 else:
-                    step = stepsize / np.sqrt(1.0 + iteration)
+                    step = stepsize / decay
                 displacement = step * phi
 
             elif step_schedule == "adagrad":

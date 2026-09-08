@@ -22,7 +22,6 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=2.2",
-    "scipy",
     "tqdm",
 ]
 

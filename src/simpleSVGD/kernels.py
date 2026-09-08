@@ -1,19 +1,36 @@
 import numpy as _numpy
-from scipy.spatial.distance import pdist as _pdist, squareform as _squareform
+
+
+def _pairwise_sq_dists(theta):
+    """Pairwise squared Euclidean distances between rows of theta.
+
+    Computed via the Gram-matrix identity ``|a-b|^2 = |a|^2 + |b|^2 - 2 a.b``
+    instead of scipy's pdist/squareform, which always upcasts to float64
+    regardless of input dtype -- this version preserves theta's dtype.
+    """
+    sq_norms = _numpy.sum(theta * theta, axis=1)
+    sq_dist = sq_norms[:, None] + sq_norms[None, :] - 2.0 * (theta @ theta.T)
+    # Floating-point cancellation can push near-zero (e.g. diagonal) entries
+    # slightly negative.
+    _numpy.maximum(sq_dist, 0, out=sq_dist)
+    return sq_dist
 
 
 def rbf_kernel(theta, h=-1):
     """Radial basis function kernel."""
-    sq_dist = _pdist(theta)
-    pairwise_dists = _squareform(sq_dist) ** 2
+    pairwise_dists = _pairwise_sq_dists(theta)
     if h < 0:  # if h < 0, using median trick
         h = _numpy.median(pairwise_dists)
         h = _numpy.sqrt(0.5 * h / _numpy.log(theta.shape[0] + 1))
+        # np.log(int) always returns float64; without this cast, dividing
+        # the (possibly float32) median by it would silently upcast h and
+        # everything computed from it.
+        h = theta.dtype.type(h)
 
     # Guard against zero bandwidth (all particles identical)
     if h < 1e-30:
         n = theta.shape[0]
-        return _numpy.ones((n, n)), _numpy.zeros_like(theta)
+        return _numpy.ones((n, n), dtype=theta.dtype), _numpy.zeros_like(theta)
 
     # compute the rbf kernel
     Kxy = _numpy.exp(-pairwise_dists / h ** 2 / 2)
@@ -49,14 +66,14 @@ def rbf_kernel_normalized(theta, h=-1):
     theta_n = theta / std  # normalized particles
 
     # Compute kernel in normalized space
-    sq_dist = _pdist(theta_n)
-    pairwise_dists = _squareform(sq_dist) ** 2
+    pairwise_dists = _pairwise_sq_dists(theta_n)
     if h < 0:
         h = _numpy.median(pairwise_dists)
         h = _numpy.sqrt(0.5 * h / _numpy.log(n_particles + 1))
+        h = theta.dtype.type(h)
 
     if h < 1e-30:
-        return _numpy.ones((n_particles, n_particles)), _numpy.zeros_like(theta)
+        return _numpy.ones((n_particles, n_particles), dtype=theta.dtype), _numpy.zeros_like(theta)
 
     Kxy = _numpy.exp(-pairwise_dists / h ** 2 / 2)
 

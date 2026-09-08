@@ -1,27 +1,35 @@
 """Core SVGD update function with optional preconditioning and hierarchical sigma."""
 
-import math as _math
+import math
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
-import tqdm.auto as _tqdm_auto
+import tqdm.auto as tqdm_auto
 
 from ._typing import FloatDType
 from .kernels import rbf_kernel, rbf_kernel_normalized
-from .lbfgs import lbfgs_direction, lbfgs_update, make_lbfgs_state
+from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 KernelFn = Callable[
     [npt.NDArray[FloatDType], float],
     tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
 ]
+GradientFn = Callable[
+    [npt.NDArray[FloatDType]],
+    npt.NDArray[FloatDType] | tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
+]
+Background = tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType], npt.NDArray[FloatDType]]
 
 
 def update(
     x0: npt.NDArray[FloatDType],
-    gradient_fn: Callable[[npt.NDArray[FloatDType]], Any],
+    gradient_fn: GradientFn[FloatDType],
     *,
     n_iter: int = 1000,
     stepsize: float = 1e-3,
@@ -48,9 +56,9 @@ def update(
     resume_from: SVGDState[FloatDType] | None = None,
     # --- Legacy animation ---
     animate: bool = False,
-    figure: Any | None = None,
+    figure: "Figure | None" = None,
     dimensions_to_plot: list[int] | None = None,
-    background: tuple[Any, Any, Any] | None = None,
+    background: Background[FloatDType] | None = None,
 ) -> SVGDState[FloatDType]:
     """Update a collection of samples using Stein Variational Gradient Descent.
 
@@ -68,8 +76,9 @@ def update(
         of shape ``(n_particles, n_dims)`` and returns gradients of the same
         shape. When ``data_sigma`` is set or ``estimate_sigma`` is ``True``,
         must return ``(gradients, misfits)`` where misfits has shape
-        ``(n_particles,)``. (This dual-mode return can't be expressed
-        precisely with a single Callable type, hence ``Any``.)
+        ``(n_particles,)`` -- which of the two return shapes is actually
+        used is a runtime choice this type can't narrow statically, so it's
+        re-asserted via ``cast`` at the one call site below.
     n_iter : int
         Number of iterations.
     stepsize : float
@@ -157,7 +166,7 @@ def update(
     # -------------------------------------------------------------------------
     # Initialize or resume state
     # -------------------------------------------------------------------------
-    lbfgs_states: list[Any] | None
+    lbfgs_states: list[LBFGSState[FloatDType]] | None
     historical_grad: npt.NDArray[FloatDType] | None
     if resume_from is not None:
         particles = resume_from.particles.copy()
@@ -231,12 +240,12 @@ def update(
     # Animation setup (legacy)
     # -------------------------------------------------------------------------
     if animate:
-        import matplotlib.pyplot as _plt
+        import matplotlib.pyplot as plt  # noqa: PLC0415 -- matplotlib is an optional extra
 
         if figure is None:
-            figure = _plt.figure(figsize=(8, 8))
+            figure = plt.figure(figsize=(8, 8))
         assert figure is not None  # noqa: S101 -- just assigned above if it was None
-        axis = _plt.gca()
+        axis = plt.gca()
 
         if background is not None:
             x1s, x2s, background_image = background
@@ -250,12 +259,12 @@ def update(
         )
 
         if background is not None:
-            _plt.xlim(x1s.min(), x1s.max())
-            _plt.ylim(x2s.min(), x2s.max())
+            plt.xlim(float(np.min(x1s)), float(np.max(x1s)))
+            plt.ylim(float(np.min(x2s)), float(np.max(x2s)))
 
         axis.set_aspect(1)
         figure.canvas.draw()
-        _plt.pause(1e-5)
+        plt.pause(1e-5)
 
     # -------------------------------------------------------------------------
     # AdaGrad parameters
@@ -266,7 +275,7 @@ def update(
     # -------------------------------------------------------------------------
     # Main SVGD loop
     # -------------------------------------------------------------------------
-    outer = _tqdm_auto.trange(
+    outer = tqdm_auto.trange(
         n_iter, desc="SVGD", unit="iter", disable=disable_progressbar
     )
     try:
@@ -274,17 +283,18 @@ def update(
             iteration = start_iter + loop_iter
 
             # Evaluate gradients (and optionally misfits) at all particles.
-            # gradient_fn's return shape depends on needs_misfits, which
-            # Python's type system can't express as a function of a runtime
-            # value -- result is intentionally untyped (Any) here and
-            # explicitly re-typed via np.asarray(..., dtype=...) below.
-            result: Any = gradient_fn(particles)
+            # gradient_fn's actual return shape depends on needs_misfits, a
+            # runtime value the type system can't narrow -- re-asserted via
+            # cast() rather than weakening the signature to Any.
+            result = gradient_fn(particles)
             misfits: npt.NDArray[FloatDType] | None
             if needs_misfits:
-                all_grads, misfits = result
+                all_grads, misfits = cast(
+                    "tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]]", result
+                )
                 misfits = np.asarray(misfits)
             else:
-                all_grads = result
+                all_grads = cast("npt.NDArray[FloatDType]", result)
                 misfits = None
             # gradient_fn is user-supplied and easy to write in a way that
             # silently returns float64 (e.g. building constants with
@@ -360,7 +370,7 @@ def update(
                 precond_grads = all_grads
 
             # Compute kernel
-            kxy, dxkxy = kernel_fn(particles, bandwidth)
+            kernel_matrix, kernel_grad = kernel_fn(particles, bandwidth)
 
             # Apply sigma scaling to the attractive term
             if current_sigma is not None:
@@ -370,8 +380,8 @@ def update(
 
             # SVGD update direction:
             #   phi = -(K @ grads_scaled - nabla_K) / n_particles
-            attractive = np.matmul(kxy, grads_scaled)
-            phi = -(attractive - dxkxy) / n_particles
+            attractive = np.matmul(kernel_matrix, grads_scaled)
+            phi = -(attractive - kernel_grad) / n_particles
 
             # Compute step size
             if step_schedule == "robbins-monro":
@@ -380,14 +390,14 @@ def update(
                 # of a bare int/float with no array context always returns
                 # float64, which would silently upcast `step` and then
                 # `displacement` even when phi is float32.
-                decay = _math.sqrt(1.0 + iteration)
+                decay = math.sqrt(1.0 + iteration)
                 step = stepsize / (attr_max * decay) if attr_max > 0 else stepsize / decay
                 displacement = step * phi
 
             elif step_schedule == "adagrad":
                 # AdaGrad with momentum
                 assert historical_grad is not None  # noqa: S101 -- step_schedule invariant
-                grad_theta = (np.matmul(kxy, precond_grads) - dxkxy) / n_particles
+                grad_theta = (np.matmul(kernel_matrix, precond_grads) - kernel_grad) / n_particles
                 if iteration == 0:
                     historical_grad = grad_theta**2
                 else:
@@ -428,7 +438,7 @@ def update(
                     )
                 )
                 figure.canvas.draw()
-                _plt.pause(1e-5)
+                plt.pause(1e-5)
 
     except KeyboardInterrupt:
         pass

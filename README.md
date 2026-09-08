@@ -1,11 +1,11 @@
-# simpleSVGD
+# simplesvgd
 
 This package is a small implementation of the SVGD algorithm 
 
 By default, this package uses **radial basis functions** to compute sample
 interaction and **AdaGrad** to optimize the samples.
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/larsgeb/simpleSVGD/HEAD?labpath=%2Fnotebooks%2FTutorial%20on%20using%20simpleSVGD.ipynb) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5938430.svg)](https://doi.org/10.5281/zenodo.5938430)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/larsgeb/simpleSVGD/HEAD?labpath=%2Fnotebooks%2FTutorial%20on%20using%20simplesvgd.ipynb) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5938430.svg)](https://doi.org/10.5281/zenodo.5938430)
 
 
 
@@ -15,7 +15,7 @@ Requires Python 3.11+.
 
 To get the latest release, simply use pip inside your favourite environment:
 ```sh
-pip install simpleSVGD
+pip install simplesvgd
 ```
 
 To install the latest version directly from GitHub:
@@ -110,7 +110,7 @@ def Himmelblau_grad(input_array: np.array) -> np.array:
 
 To run the algorithm with a 1000 samples that are initially Normally 
 distribution (mean=0, standard deviation=3, parameters chosen based on prior
-belief), we simply call `simpleSVGD.update()` in the following way:
+belief), we simply call `simplesvgd.update()` in the following way:
 
 ```python
 initial_samples = np.random.normal(0, 3, [1000, 2])
@@ -122,7 +122,7 @@ plt.xlabel("Parameter 0")
 plt.ylabel("Parameter 1")
 plt.title("SVGD animation on the Himmelblau function")
 
-state = simpleSVGD.update(
+state = simplesvgd.update(
     initial_samples,
     Himmelblau_grad,
     n_iter=130,
@@ -134,11 +134,11 @@ state = simpleSVGD.update(
 final_samples = state.particles
 ```
 
-`simpleSVGD.update()` returns an `SVGDState`, not a raw array -- `.particles`
+`simplesvgd.update()` returns an `SVGDState`, not a raw array -- `.particles`
 holds the current particle positions and can also be passed back in via
 `resume_from` to continue a run. AdaGrad's internal parameters (momentum,
 fudge factor) aren't user-configurable; use `step_schedule="constant"` or
-`step_schedule="robbins-monro"` (see `help(simpleSVGD.update)`) if you need
+`step_schedule="robbins-monro"` (see `help(simplesvgd.update)`) if you need
 different step-size behavior.
 
 To animate the algorithm, simply uncomment the comments. The result should be

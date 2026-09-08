@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from simpleSVGD.lbfgs import lbfgs_direction, lbfgs_update, make_lbfgs_state
+from simplesvgd.lbfgs import lbfgs_direction, lbfgs_update, make_lbfgs_state
 
 
 def test_empty_state_returns_steepest_descent():
@@ -61,25 +61,25 @@ def test_quadratic_approximation():
     n = 5
     rng = np.random.default_rng(123)
     # SPD matrix
-    M = rng.normal(size=(n, n))
-    A = M.T @ M + np.eye(n)
-    A_inv = np.linalg.inv(A)
+    random_matrix = rng.normal(size=(n, n))
+    spd_matrix = random_matrix.T @ random_matrix + np.eye(n)
+    spd_matrix_inv = np.linalg.inv(spd_matrix)
 
     state = make_lbfgs_state(n, m=n)
 
     x = rng.normal(size=n)
     for _ in range(2 * n):
-        g = A @ x
+        g = spd_matrix @ x
         d = lbfgs_direction(state, g)
         x_new = x + 0.5 * d  # half step toward minimum
-        g_new = A @ x_new
+        g_new = spd_matrix @ x_new
         lbfgs_update(state, x_new - x, g_new - g)
         x = x_new
 
     # After enough steps, H*g should approximate A^{-1}*g
     g_test = rng.normal(size=n)
     d = lbfgs_direction(state, g_test)
-    exact = -A_inv @ g_test
+    exact = -spd_matrix_inv @ g_test
     # Check direction is similar (cosine similarity > 0.95)
     cos_sim = np.dot(d, exact) / (np.linalg.norm(d) * np.linalg.norm(exact))
     assert cos_sim > 0.7, f"cosine similarity {cos_sim:.3f} too low"

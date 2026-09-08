@@ -1,9 +1,9 @@
-# Tutorial on using simpleSVGD
+# Tutorial on using simplesvgd
 
 
 import numpy as np
 
-import simpleSVGD
+import simplesvgd
 
 # We define our test function here. The actual scalar value of the function is
 # never used in the optimization process, so it isn't necessary to implement.
@@ -13,7 +13,7 @@ import simpleSVGD
 smoothing = 30
 
 
-def Himmelblau(input_array: np.ndarray) -> np.ndarray:
+def himmelblau(input_array: np.ndarray) -> np.ndarray:
 
     # As this is a 2-dimensional function, assert that the passed input_array
     # is correct.
@@ -33,7 +33,7 @@ def Himmelblau(input_array: np.ndarray) -> np.ndarray:
     return output_array / smoothing
 
 
-def Himmelblau_grad(input_array: np.ndarray) -> np.ndarray:
+def himmelblau_grad(input_array: np.ndarray) -> np.ndarray:
 
     # As this is a 2-dimensional function, assert that the passed input_array
     # is correct.
@@ -60,9 +60,9 @@ def Himmelblau_grad(input_array: np.ndarray) -> np.ndarray:
 
 initial_samples = np.random.normal(0, 3, [1000, 2])
 
-state = simpleSVGD.update(
+state = simplesvgd.update(
     initial_samples,
-    Himmelblau_grad,
+    himmelblau_grad,
     n_iter=130,
     stepsize=1e0,
 )

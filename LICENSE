@@ -1,7 +1,11 @@
 The MIT License (MIT)
 
+Copyright (c) 2016 Qiang Liu and Dilin Wang
 Copyright (c) 2022 Lars Gebraad
-Based on code from 2016, Qiang Liu and Dilin Wang, https://github.com/dilinwang820/Stein-Variational-Gradient-Descent
+
+Portions of this software are derived from
+https://github.com/dilinwang820/Stein-Variational-Gradient-Descent (2016),
+also MIT licensed.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

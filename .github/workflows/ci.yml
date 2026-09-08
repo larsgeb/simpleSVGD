@@ -37,5 +37,18 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --group dev --python "${{ matrix.python-version }}"
+      - run: uv sync --group dev --extra viz --python "${{ matrix.python-version }}"
       - run: uv run --python "${{ matrix.python-version }}" pytest tests
+
+  pytest-torch:
+    # Separate, single-version job: torch is a heavy optional dependency and
+    # this only exercises update_torch, the legacy PyTorch bridge -- not
+    # worth adding to every leg of the main matrix.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev --extra torch --extra viz --python "3.11"
+      - run: uv run --python "3.11" pytest tests/test_torch.py

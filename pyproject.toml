@@ -31,7 +31,12 @@ viz = ["matplotlib"]
 
 [dependency-groups]
 dev = ["pytest", "ruff", "ty"]
-docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
+docs = [
+    "mkdocs",
+    "mkdocs-jupyter>=0.26.3",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+]
 
 [project.urls]
 Homepage = "https://github.com/larsgeb/simpleSVGD"
@@ -44,6 +49,9 @@ packages = ["src/simplesvgd"]
 [tool.ruff]
 line-length = 100
 src = ["src"]
+# docs/notebooks/** are symlinks to notebooks/** (for mkdocs-jupyter); skip
+# linting them a second time under their docs-site path.
+extend-exclude = ["docs/notebooks"]
 
 [tool.ruff.lint]
 select = ["ALL"]

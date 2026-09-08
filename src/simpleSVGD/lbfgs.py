@@ -22,6 +22,7 @@ class LBFGSState(Generic[FloatDType]):
         Y: Array of shape (m, n) storing y_k = g_{k+1} - g_k vectors.
         cursor: Index where the next pair will be written.
         count: Number of pairs stored so far (up to m).
+
     """
 
     S: npt.NDArray[FloatDType]

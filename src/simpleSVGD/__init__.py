@@ -5,20 +5,34 @@ inference and distribution approximation.  Supports optional L-BFGS
 preconditioning, hierarchical noise estimation, bounds, callbacks, and resume.
 """
 
+from collections.abc import Callable
 from time import sleep
-from typing import Any, Callable
+from typing import Any
 
 import numpy as _numpy
 import numpy.typing as _npt
 import tqdm.auto as _tqdm_auto
 
 from ._typing import FloatDType
-from .kernels import rbf_kernel as _rbf_kernel, rbf_kernel_normalized
+from .kernels import rbf_kernel as _rbf_kernel
+from .kernels import rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
 from .update import update
 
 __version__ = "1.0.0"
+
+__all__ = [
+    "LBFGSState",
+    "SVGDState",
+    "gradient_vectorizer",
+    "lbfgs_direction",
+    "lbfgs_update",
+    "make_lbfgs_state",
+    "rbf_kernel_normalized",
+    "update",
+    "update_torch",
+]
 
 
 def update_torch(
@@ -27,6 +41,7 @@ def update_torch(
     optimizer_class: type[Any],
     optimizer_parameters: dict[str, Any] | None = None,
     schedulers: list[Any] | None = None,
+    *,
     n_iter: int = 1000,
     animate: bool = False,
     figure: Any | None = None,
@@ -52,9 +67,20 @@ def update_torch(
         Number of iterations.
     animate : bool
         Enable 2D scatter animation.
+    figure : matplotlib Figure or None
+        Figure to draw the animation on; created if not given.
+    dimensions_to_plot : list of int or None
+        Which two particle dimensions to animate. Defaults to ``[0, 1]``.
+    background : tuple or None
+        ``(x1s, x2s, background_image)`` contour data to draw behind the
+        animation.
+    disable_progressbar : bool
+        Suppress the tqdm progress bar.
+
     """
-    import torch as _torch  # ty: ignore[unresolved-import] -- optional extra
     import matplotlib.pyplot as _plt
+    import torch as _torch  # ty: ignore[unresolved-import] -- optional extra
+
     from .helpers import TorchWrapper as _TorchWrapper
 
     if x0 is None or gradient_fn is None:

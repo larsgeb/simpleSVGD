@@ -1,7 +1,14 @@
+"""RBF kernels (standard and per-dimension normalized) used by update()."""
+
 import numpy as _numpy
 import numpy.typing as _npt
 
 from ._typing import FloatDType
+
+# Below this, particles are treated as coincident/constant: further division
+# by bandwidth or per-dimension std risks blowing up to inf/nan for no
+# numerical reason.
+_DEGENERATE_SCALE_THRESHOLD = 1e-30
 
 
 def _pairwise_sq_dists(theta: _npt.NDArray[FloatDType]) -> _npt.NDArray[FloatDType]:
@@ -36,7 +43,7 @@ def rbf_kernel(
         bandwidth = h
 
     # Guard against zero bandwidth (all particles identical)
-    if bandwidth < 1e-30:
+    if bandwidth < _DEGENERATE_SCALE_THRESHOLD:
         n = theta.shape[0]
         return _numpy.ones((n, n), dtype=theta.dtype), _numpy.zeros_like(theta)
 
@@ -72,7 +79,7 @@ def rbf_kernel_normalized(
     # Per-dimension normalization
     std = _numpy.std(theta, axis=0)
     # Avoid division by zero for constant dimensions
-    std = _numpy.where(std < 1e-30, 1.0, std)
+    std = _numpy.where(std < _DEGENERATE_SCALE_THRESHOLD, 1.0, std)
     theta_n = theta / std  # normalized particles
 
     # Compute kernel in normalized space
@@ -85,7 +92,7 @@ def rbf_kernel_normalized(
     else:
         bandwidth = h
 
-    if bandwidth < 1e-30:
+    if bandwidth < _DEGENERATE_SCALE_THRESHOLD:
         return _numpy.ones((n_particles, n_particles), dtype=theta.dtype), _numpy.zeros_like(theta)
 
     Kxy = _numpy.exp(-pairwise_dists / bandwidth ** 2 / 2)

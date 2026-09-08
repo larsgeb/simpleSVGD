@@ -15,7 +15,6 @@ jobs:
           python-version: "3.14"
       - run: uv sync --group dev
       - run: uv run ruff check .
-        continue-on-error: true
 
   ty:
     runs-on: ubuntu-latest

@@ -27,6 +27,7 @@ class SVGDState(Generic[FloatDType]):
         particle_misfit_history: Per-particle misfits at each iteration.
         prev_particles: Previous particle positions (for deferred L-BFGS update).
         prev_grads: Previous gradients (for deferred L-BFGS update).
+
     """
 
     particles: npt.NDArray[FloatDType]

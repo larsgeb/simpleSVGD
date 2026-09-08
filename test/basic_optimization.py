@@ -2,8 +2,8 @@
 
 
 import numpy as np
-import simpleSVGD
 
+import simpleSVGD
 
 # We define our test function here. The actual scalar value of the function is
 # never used in the optimization process, so it isn't necessary to implement.

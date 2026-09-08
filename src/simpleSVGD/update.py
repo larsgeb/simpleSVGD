@@ -1,7 +1,8 @@
 """Core SVGD update function with optional preconditioning and hierarchical sigma."""
 
 import math as _math
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -112,11 +113,19 @@ def update(
         Resume from a previous run's state.
     animate : bool
         Legacy animation support (requires matplotlib).
+    figure : matplotlib Figure or None
+        Figure to draw the animation on; created if not given.
+    dimensions_to_plot : list of int or None
+        Which two particle dimensions to animate. Defaults to ``[0, 1]``.
+    background : tuple or None
+        ``(x1s, x2s, background_image)`` contour data to draw behind the
+        animation.
 
     Returns
     -------
     SVGDState
         Final optimizer state. Access ``.particles`` for the particle array.
+
     """
     if x0 is None or gradient_fn is None:
         raise ValueError("x0 and gradient_fn cannot be None!")

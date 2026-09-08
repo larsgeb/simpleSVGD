@@ -47,14 +47,14 @@ output_gradient.shape = (430, 3)
 Typically, it is useful to instantiate the samples using a Normal distribution. Using NumPy, this is done with:
 ```python
 import numpy as np
-np.random.seed(235)
+rng = np.random.default_rng(235)
 
 mean = 0
 standard_dev = 1
 n_samples = 100
 dimensions = 2
 
-initial_samples = np.random.normal(mean, standard_dev, [n_samples, dimensions])
+initial_samples = rng.normal(mean, standard_dev, [n_samples, dimensions])
 ```
 
 ## Defining an example target
@@ -113,7 +113,8 @@ distribution (mean=0, standard deviation=3, parameters chosen based on prior
 belief), we simply call `simplesvgd.update()` in the following way:
 
 ```python
-initial_samples = np.random.normal(0, 3, [1000, 2])
+rng = np.random.default_rng()
+initial_samples = rng.normal(0, 3, [1000, 2])
 
 #%matplotlib notebook
 

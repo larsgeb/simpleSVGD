@@ -23,8 +23,8 @@ class TestLBFGSPreconditioner:
         self.grad_fn = grad_fn
 
     def test_mean_convergence(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 5, (200, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 5, (200, 2))
         initial_error = np.linalg.norm(np.mean(x0, axis=0) - self.true_mean)
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=500, stepsize=0.1,
@@ -38,8 +38,8 @@ class TestLBFGSPreconditioner:
         )
 
     def test_lbfgs_states_populated(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (10, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (10, 2))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=20, stepsize=0.05,
             preconditioner="lbfgs", disable_progressbar=True
@@ -67,8 +67,8 @@ class TestHierarchicalSigma:
         self.grad_fn = grad_fn
 
     def test_sigma_converges(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (50, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (50, 1))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=100, stepsize=0.3,
             data_sigma=2.0, estimate_sigma=True,
@@ -81,8 +81,8 @@ class TestHierarchicalSigma:
         assert state.data_sigma is not None
 
     def test_misfit_history_recorded(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (20, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (20, 1))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=50, stepsize=0.3,
             data_sigma=1.0, estimate_sigma=True,
@@ -97,9 +97,9 @@ class TestHierarchicalSigma:
 class TestBoundsEnforcement:
 
     def test_particles_stay_within_bounds(self):
-        np.random.seed(42)
+        rng = np.random.default_rng(42)
         # Target mean is outside bounds → particles should be clipped
-        x0 = np.random.normal(0, 0.5, (100, 2))
+        x0 = rng.normal(0, 0.5, (100, 2))
 
         def grad_fn(x):
             return x - 5.0  # pushes toward 5.0
@@ -115,8 +115,8 @@ class TestBoundsEnforcement:
 class TestResume:
 
     def test_resume_continues_iteration(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (100, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (100, 1))
 
         def grad_fn(x):
             return (x - 3.0) / 4.0
@@ -136,8 +136,8 @@ class TestResume:
         assert mean_final < 0.5
 
     def test_resume_lbfgs(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (50, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (50, 2))
 
         def grad_fn(x):
             return x
@@ -157,8 +157,8 @@ class TestResume:
 class TestCallback:
 
     def test_callback_called_each_iteration(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (20, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (20, 1))
         iterations_seen = []
 
         def my_callback(iteration, _state):
@@ -171,8 +171,8 @@ class TestCallback:
         assert iterations_seen == list(range(10))
 
     def test_callback_receives_state(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (20, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (20, 2))
         states_seen = []
 
         def my_callback(_iteration, state):
@@ -190,8 +190,8 @@ class TestBackwardCompat:
     """Old-style positional call should still work."""
 
     def test_positional_args(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (100, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (100, 2))
 
         def grad_fn(x):
             return x
@@ -204,8 +204,8 @@ class TestBackwardCompat:
         assert state.particles.shape == (100, 2)
 
     def test_returns_svgd_state(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (10, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (10, 1))
         result = simplesvgd.update(x0, lambda x: x, n_iter=5, stepsize=0.1,
                                    disable_progressbar=True)
         assert isinstance(result, simplesvgd.SVGDState)
@@ -215,8 +215,8 @@ class TestBackwardCompat:
 class TestRobbinsMonroSchedule:
 
     def test_does_not_diverge(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (100, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (100, 1))
 
         def grad_fn(x):
             return (x - 2.0)
@@ -234,8 +234,8 @@ class TestRobbinsMonroSchedule:
 class TestConstantSchedule:
 
     def test_constant_step(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (50, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (50, 1))
 
         def grad_fn(x):
             return x

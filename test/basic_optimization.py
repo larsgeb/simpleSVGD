@@ -58,7 +58,8 @@ def himmelblau_grad(input_array: np.ndarray) -> np.ndarray:
 # Now we optimize the starting samples using SVGD, and pass the function on
 # evaluated on the grid as a nice background for the animation.
 
-initial_samples = np.random.normal(0, 3, [1000, 2])
+rng = np.random.default_rng()
+initial_samples = rng.normal(0, 3, [1000, 2])
 
 state = simplesvgd.update(
     initial_samples,

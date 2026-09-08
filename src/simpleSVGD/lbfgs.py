@@ -26,11 +26,16 @@ class LBFGSState:
     count: int = 0
 
 
-def make_lbfgs_state(n: int, m: int = 10) -> LBFGSState:
-    """Create an empty L-BFGS state with history size *m* for vectors of length *n*."""
+def make_lbfgs_state(n: int, m: int = 10, dtype: np.dtype = np.float64) -> LBFGSState:
+    """Create an empty L-BFGS state with history size *m* for vectors of length *n*.
+
+    *dtype* should match the dtype of the gradients/particles this state
+    will be used with (e.g. ``np.float32``), so the two-loop recursion in
+    :func:`lbfgs_direction` doesn't get upcast by a mismatched buffer dtype.
+    """
     return LBFGSState(
-        S=np.zeros((m, n), dtype=np.float64),
-        Y=np.zeros((m, n), dtype=np.float64),
+        S=np.zeros((m, n), dtype=dtype),
+        Y=np.zeros((m, n), dtype=dtype),
         cursor=0,
         count=0,
     )
@@ -67,8 +72,12 @@ def lbfgs_direction(state: LBFGSState, grad: np.ndarray) -> np.ndarray:
     indices = [(state.cursor - 1 - i) % m for i in range(k)]
 
     q = grad.copy()
-    alphas = np.zeros(k)
-    rhos = np.zeros(k)
+    # dtype=grad.dtype matters: a plain np.zeros(k) defaults to float64, and
+    # a float64 numpy scalar pulled from it would upcast every float32 array
+    # it later touches (unlike a plain Python float, which stays "weak" and
+    # doesn't force a promotion).
+    alphas = np.zeros(k, dtype=grad.dtype)
+    rhos = np.zeros(k, dtype=grad.dtype)
 
     # Forward pass (newest to oldest)
     for j, idx in enumerate(indices):

@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "ty"]
 torch = ["torch"]
 viz = ["matplotlib"]
 
@@ -29,3 +29,9 @@ Issues = "https://github.com/larsgeb/simpleSVGD/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["ALL"]

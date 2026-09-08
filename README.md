@@ -5,7 +5,12 @@ This package is a small implementation of the SVGD algorithm
 By default, this package uses **radial basis functions** to compute sample
 interaction and **AdaGrad** to optimize the samples.
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/larsgeb/simpleSVGD/HEAD?labpath=%2Fnotebooks%2FTutorial%20on%20using%20simplesvgd.ipynb) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5938430.svg)](https://doi.org/10.5281/zenodo.5938430)
+[![CI](https://github.com/larsgeb/simpleSVGD/actions/workflows/ci.yml/badge.svg)](https://github.com/larsgeb/simpleSVGD/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/simplesvgd.svg)](https://pypi.org/project/simplesvgd/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://github.com/larsgeb/simpleSVGD/blob/master/pyproject.toml)
+[![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://larsgeb.github.io/simpleSVGD/)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/larsgeb/simpleSVGD/HEAD?labpath=%2Fnotebooks%2FTutorial%20on%20using%20simplesvgd.ipynb)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5938430.svg)](https://doi.org/10.5281/zenodo.5938430)
 
 Full documentation (mini-tutorial + API reference): https://larsgeb.github.io/simpleSVGD/
 

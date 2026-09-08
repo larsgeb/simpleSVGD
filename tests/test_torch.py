@@ -137,3 +137,26 @@ class TestUpdateTorch:
         )
         assert result.shape == x0.shape
         assert calls["n"] == 2
+
+
+class TestDtypePreservation:
+    """torch_wrapper used to hardcode torch.FloatTensor (float32), silently
+    downcasting float64 input regardless of x0's actual dtype (issue #4)."""
+
+    @pytest.mark.parametrize("dtype", [np.float32, np.float64])
+    def test_result_dtype_matches_input_dtype(self, dtype):
+        rng = np.random.default_rng(7)
+        x0 = rng.normal(size=(10, 2)).astype(dtype)
+
+        def grad_fn(x):
+            return x
+
+        result = simplesvgd.update_torch(
+            x0,
+            grad_fn,
+            torch.optim.SGD,
+            optimizer_parameters={"lr": 0.1},
+            n_iter=3,
+            disable_progressbar=True,
+        )
+        assert result.dtype == dtype

@@ -18,23 +18,22 @@ def torch_wrapper(
         @staticmethod
         def forward(ctx: Any, input_tensor: Any) -> Any:  # noqa: ANN401 -- torch context/Tensor types unavailable without installing torch for type-checking
             ctx.save_for_backward(input_tensor)
-            return input_tensor.type(torch.FloatTensor)
+            return input_tensor
 
         @staticmethod
         def backward(ctx: Any, grad_output: Any) -> Any:  # noqa: ANN401 -- same as forward()
             (input_tensor,) = ctx.saved_tensors
+            dtype = input_tensor.dtype
 
             kernel_matrix, kernel_grad = kernel(input_tensor.numpy(), -1)
 
-            kernel_matrix_t = torch.from_numpy(kernel_matrix).type(torch.FloatTensor)
-            kernel_grad_t = torch.from_numpy(kernel_grad).type(torch.FloatTensor)
+            kernel_matrix_t = torch.from_numpy(kernel_matrix).type(dtype)
+            kernel_grad_t = torch.from_numpy(kernel_grad).type(dtype)
 
             return grad_output * (
                 kernel_matrix_t
-                @ torch.from_numpy(g_fn(input_tensor.numpy())).type(
-                    torch.FloatTensor
-                )
+                @ torch.from_numpy(g_fn(input_tensor.numpy())).type(dtype)
                 - kernel_grad_t
-            ).type(torch.FloatTensor)
+            ).type(dtype)
 
     return _InternalClass.apply

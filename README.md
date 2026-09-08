@@ -1,7 +1,6 @@
 # simpleSVGD
 
-This package is a tiny SVGD algorithm specifically developed to operate on
-distributions found in [HMCLab](https://github.com/larsgeb/HMCLab). 
+This package is a small implementation of the SVGD algorithm 
 
 By default, this package uses **radial basis functions** to compute sample
 interaction and **AdaGrad** to optimize the samples.

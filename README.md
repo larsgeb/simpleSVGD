@@ -11,7 +11,7 @@ interaction and **AdaGrad** to optimize the samples.
 
 ## Installation:
 
-We recommend using at least Python 3.7.
+Requires Python 3.11+.
 
 To get the latest release, simply use pip inside your favourite environment:
 ```sh
@@ -122,20 +122,24 @@ plt.xlabel("Parameter 0")
 plt.ylabel("Parameter 1")
 plt.title("SVGD animation on the Himmelblau function")
 
-final_samples = simpleSVGD.update(
+state = simpleSVGD.update(
     initial_samples,
     Himmelblau_grad,
     n_iter=130,
-    # AdaGrad parameters
     stepsize=1e-1,
-    alpha=0.9,
-    fudge_factor=1e-3,
-    historical_grad=1,
     #animate=True,
     #background=background,
     #figure=figure,
 )
+final_samples = state.particles
 ```
+
+`simpleSVGD.update()` returns an `SVGDState`, not a raw array -- `.particles`
+holds the current particle positions and can also be passed back in via
+`resume_from` to continue a run. AdaGrad's internal parameters (momentum,
+fudge factor) aren't user-configurable; use `step_schedule="constant"` or
+`step_schedule="robbins-monro"` (see `help(simpleSVGD.update)`) if you need
+different step-size behavior.
 
 To animate the algorithm, simply uncomment the comments. The result should be
 similar to this:

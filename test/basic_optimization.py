@@ -13,7 +13,7 @@ import simpleSVGD
 smoothing = 30
 
 
-def Himmelblau(input_array: np.array) -> np.array:
+def Himmelblau(input_array: np.ndarray) -> np.ndarray:
 
     # As this is a 2-dimensional function, assert that the passed input_array
     # is correct.
@@ -33,7 +33,7 @@ def Himmelblau(input_array: np.array) -> np.array:
     return output_array / smoothing
 
 
-def Himmelblau_grad(input_array: np.array) -> np.array:
+def Himmelblau_grad(input_array: np.ndarray) -> np.ndarray:
 
     # As this is a 2-dimensional function, assert that the passed input_array
     # is correct.
@@ -60,10 +60,10 @@ def Himmelblau_grad(input_array: np.array) -> np.array:
 
 initial_samples = np.random.normal(0, 3, [1000, 2])
 
-final_samples = simpleSVGD.update(
+state = simpleSVGD.update(
     initial_samples,
     Himmelblau_grad,
     n_iter=130,
-    # AdaGrad parameters
     stepsize=1e0,
 )
+final_samples = state.particles

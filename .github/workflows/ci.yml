@@ -24,9 +24,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.14"
-      - run: uv sync --group dev
+      - run: uv sync --group dev --extra viz
       - run: uv run ty check
-        continue-on-error: true
 
   pytest:
     runs-on: ubuntu-latest

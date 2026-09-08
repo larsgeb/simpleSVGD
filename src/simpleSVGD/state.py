@@ -1,15 +1,16 @@
 """SVGDState dataclass — full optimizer state sufficient for resume."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Generic
 
-import numpy as np
+import numpy.typing as npt
 
+from ._typing import FloatDType
 from .lbfgs import LBFGSState
 
 
 @dataclass
-class SVGDState:
+class SVGDState(Generic[FloatDType]):
     """Complete state of an SVGD run.
 
     This object is returned by :func:`simpleSVGD.update` and can be passed
@@ -26,15 +27,16 @@ class SVGDState:
         particle_misfit_history: Per-particle misfits at each iteration.
         prev_particles: Previous particle positions (for deferred L-BFGS update).
         prev_grads: Previous gradients (for deferred L-BFGS update).
+
     """
 
-    particles: np.ndarray
+    particles: npt.NDArray[FloatDType]
     iteration: int = 0
-    lbfgs_states: Optional[List[LBFGSState]] = None
-    historical_grad: Optional[np.ndarray] = None
-    data_sigma: Optional[float] = None
-    sigma_history: List[float] = field(default_factory=list)
-    misfit_history: List[float] = field(default_factory=list)
-    particle_misfit_history: List[List[float]] = field(default_factory=list)
-    prev_particles: Optional[np.ndarray] = None
-    prev_grads: Optional[np.ndarray] = None
+    lbfgs_states: list[LBFGSState[FloatDType]] | None = None
+    historical_grad: npt.NDArray[FloatDType] | None = None
+    data_sigma: float | None = None
+    sigma_history: list[float] = field(default_factory=list)
+    misfit_history: list[float] = field(default_factory=list)
+    particle_misfit_history: list[list[float]] = field(default_factory=list)
+    prev_particles: npt.NDArray[FloatDType] | None = None
+    prev_grads: npt.NDArray[FloatDType] | None = None

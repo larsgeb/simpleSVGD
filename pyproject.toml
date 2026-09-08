@@ -40,7 +40,28 @@ Issues = "https://github.com/larsgeb/simpleSVGD/issues"
 packages = ["src/simpleSVGD"]
 
 [tool.ruff]
+line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
 select = ["ALL"]
+ignore = [
+    "ANN401",   # Any is the honest type at genuinely dynamic boundaries (user callbacks, optional torch/matplotlib extras)
+    "C901", "PLR0912", "PLR0913", "PLR0915", "PLR0917",  # update()'s many independent knobs are a deliberate design, not a smell
+    "COM812",   # conflicts with the formatter; this project doesn't run one
+    "CPY001",   # per-file copyright headers are redundant with LICENSE for a project this size
+    "D203", "D213",  # conflict with D211/D212 (the ones we actually use); listed explicitly to silence ruff's own warning about the conflict
+    "ERA001",   # false-positives on formula comments (e.g. "phi = -(K @ g - nablaK) / n")
+    "ICN001",   # underscore-prefixed import aliases (_numpy, _torch, _plt) are a deliberate private-import convention
+    "INP001",   # tests/, test/, notebooks/ are not meant to be importable packages
+    "N802", "N806",  # matrix/vector variable names (Kxy, dxkxy, S, Y) follow the algorithm's own notation
+    "N999",     # published as simpleSVGD; renaming the import name would be a breaking change
+    "NPY002",   # legacy np.random.seed is used throughout the test suite; switching to Generator changes every seeded value and needs its own dedicated pass
+    "PLC0415",  # deliberate lazy imports for optional extras (torch, matplotlib)
+    "TRY003", "EM101", "EM102",  # short inline exception messages are fine at this size
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN", "D", "PLR2004"]
+"test/**" = ["S101", "ANN", "D", "PLR2004"]
+"notebooks/**" = ["S101", "ANN", "D", "PLR2004"]

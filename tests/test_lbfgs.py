@@ -1,9 +1,8 @@
 """Unit tests for the L-BFGS two-loop recursion."""
 
 import numpy as np
-import pytest
 
-from simpleSVGD.lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
+from simpleSVGD.lbfgs import lbfgs_direction, lbfgs_update, make_lbfgs_state
 
 
 def test_empty_state_returns_steepest_descent():

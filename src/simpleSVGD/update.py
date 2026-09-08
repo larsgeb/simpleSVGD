@@ -1,49 +1,57 @@
 """Core SVGD update function with optional preconditioning and hierarchical sigma."""
 
 import math as _math
-from typing import Callable, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import tqdm.auto as _tqdm_auto
 
+from ._typing import FloatDType
 from .kernels import rbf_kernel, rbf_kernel_normalized
-from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
+from .lbfgs import lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
+
+KernelFn = Callable[
+    [npt.NDArray[FloatDType], float],
+    tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
+]
 
 
 def update(
-    x0: np.ndarray,
-    gradient_fn: Callable,
+    x0: npt.NDArray[FloatDType],
+    gradient_fn: Callable[[npt.NDArray[FloatDType]], Any],
     *,
     n_iter: int = 1000,
     stepsize: float = 1e-3,
     bandwidth: float = -1,
     # --- Preconditioning ---
-    preconditioner: Optional[str] = None,
+    preconditioner: str | None = None,
     lbfgs_history: int = 10,
     # --- Step schedule ---
-    step_schedule: Optional[str] = None,
+    step_schedule: str | None = None,
     # --- Hierarchical sigma ---
-    data_sigma: Optional[float] = None,
+    data_sigma: float | None = None,
     estimate_sigma: bool = False,
     sigma_prior_alpha: float = 2.0,
-    sigma_prior_beta: Optional[float] = None,
-    n_data_samples: Optional[int] = None,
+    sigma_prior_beta: float | None = None,
+    n_data_samples: int | None = None,
     # --- Kernel ---
-    kernel: Optional[str] = None,
+    kernel: str | KernelFn[FloatDType] | None = None,
     # --- Bounds ---
-    bounds: Optional[Tuple[float, float]] = None,
+    bounds: tuple[float, float] | None = None,
     # --- Callback and control ---
-    callback: Optional[Callable] = None,
+    callback: Callable[[int, SVGDState[FloatDType]], None] | None = None,
     disable_progressbar: bool = False,
     # --- Resume ---
-    resume_from: Optional[SVGDState] = None,
+    resume_from: SVGDState[FloatDType] | None = None,
     # --- Legacy animation ---
     animate: bool = False,
-    figure=None,
-    dimensions_to_plot: List[int] = [0, 1],
-    background=None,
-) -> SVGDState:
+    figure: Any | None = None,
+    dimensions_to_plot: list[int] | None = None,
+    background: tuple[Any, Any, Any] | None = None,
+) -> SVGDState[FloatDType]:
     """Update a collection of samples using Stein Variational Gradient Descent.
 
     Parameters
@@ -60,7 +68,8 @@ def update(
         of shape ``(n_particles, n_dims)`` and returns gradients of the same
         shape. When ``data_sigma`` is set or ``estimate_sigma`` is ``True``,
         must return ``(gradients, misfits)`` where misfits has shape
-        ``(n_particles,)``.
+        ``(n_particles,)``. (This dual-mode return can't be expressed
+        precisely with a single Callable type, hence ``Any``.)
     n_iter : int
         Number of iterations.
     stepsize : float
@@ -104,21 +113,33 @@ def update(
         Resume from a previous run's state.
     animate : bool
         Legacy animation support (requires matplotlib).
+    figure : matplotlib Figure or None
+        Figure to draw the animation on; created if not given.
+    dimensions_to_plot : list of int or None
+        Which two particle dimensions to animate. Defaults to ``[0, 1]``.
+    background : tuple or None
+        ``(x1s, x2s, background_image)`` contour data to draw behind the
+        animation.
 
     Returns
     -------
     SVGDState
         Final optimizer state. Access ``.particles`` for the particle array.
+
     """
     if x0 is None or gradient_fn is None:
         raise ValueError("x0 and gradient_fn cannot be None!")
 
+    if dimensions_to_plot is None:
+        dimensions_to_plot = [0, 1]
+
     # Resolve kernel function
+    kernel_fn: KernelFn[FloatDType]
     if kernel is None or kernel == "rbf":
         kernel_fn = rbf_kernel
     elif kernel == "rbf_normalized":
         kernel_fn = rbf_kernel_normalized
-    elif callable(kernel):
+    elif not isinstance(kernel, str):
         kernel_fn = kernel
     else:
         raise ValueError(f"Unknown kernel: {kernel!r}")
@@ -128,10 +149,7 @@ def update(
 
     # Resolve step schedule
     if step_schedule is None:
-        if preconditioner == "lbfgs":
-            step_schedule = "robbins-monro"
-        else:
-            step_schedule = "adagrad"
+        step_schedule = "robbins-monro" if preconditioner == "lbfgs" else "adagrad"
 
     # Resolve preconditioner
     use_lbfgs = preconditioner == "lbfgs"
@@ -139,6 +157,8 @@ def update(
     # -------------------------------------------------------------------------
     # Initialize or resume state
     # -------------------------------------------------------------------------
+    lbfgs_states: list[Any] | None
+    historical_grad: npt.NDArray[FloatDType] | None
     if resume_from is not None:
         particles = resume_from.particles.copy()
         n_particles = particles.shape[0]
@@ -215,6 +235,7 @@ def update(
 
         if figure is None:
             figure = _plt.figure(figsize=(8, 8))
+        assert figure is not None  # noqa: S101 -- just assigned above if it was None
         axis = _plt.gca()
 
         if background is not None:
@@ -229,8 +250,8 @@ def update(
         )
 
         if background is not None:
-            _plt.xlim([x1s.min(), x1s.max()])
-            _plt.ylim([x2s.min(), x2s.max()])
+            _plt.xlim(x1s.min(), x1s.max())
+            _plt.ylim(x2s.min(), x2s.max())
 
         axis.set_aspect(1)
         figure.canvas.draw()
@@ -252,8 +273,13 @@ def update(
         for loop_iter in outer:
             iteration = start_iter + loop_iter
 
-            # Evaluate gradients (and optionally misfits) at all particles
-            result = gradient_fn(particles)
+            # Evaluate gradients (and optionally misfits) at all particles.
+            # gradient_fn's return shape depends on needs_misfits, which
+            # Python's type system can't express as a function of a runtime
+            # value -- result is intentionally untyped (Any) here and
+            # explicitly re-typed via np.asarray(..., dtype=...) below.
+            result: Any = gradient_fn(particles)
+            misfits: npt.NDArray[FloatDType] | None
             if needs_misfits:
                 all_grads, misfits = result
                 misfits = np.asarray(misfits)
@@ -269,6 +295,8 @@ def update(
 
             # Deferred L-BFGS curvature update
             if use_lbfgs and prev_particles is not None:
+                assert lbfgs_states is not None  # noqa: S101 -- use_lbfgs invariant
+                assert prev_grads is not None  # noqa: S101 -- set together with prev_particles
                 for i in range(n_particles):
                     s_vec = particles[i] - prev_particles[i]
                     y_vec = all_grads[i] - prev_grads[i]
@@ -282,6 +310,7 @@ def update(
 
             # Hierarchical sigma estimation
             if estimate_sigma and misfits is not None:
+                assert sigma_prior_beta is not None  # noqa: S101 -- set above when estimate_sigma
                 raw_misfits_total = float(np.sum(misfits))
                 alpha_post = sigma_prior_alpha + n_particles * n_data_samples / 2.0
                 beta_post = sigma_prior_beta + raw_misfits_total
@@ -322,6 +351,7 @@ def update(
 
             # Precondition gradients
             if use_lbfgs:
+                assert lbfgs_states is not None  # noqa: S101 -- use_lbfgs invariant
                 precond_grads = np.zeros_like(particles)
                 for i in range(n_particles):
                     # lbfgs_direction returns -H*g; negate to get H*g
@@ -330,7 +360,7 @@ def update(
                 precond_grads = all_grads
 
             # Compute kernel
-            kxy, dxkxy = kernel_fn(particles, h=bandwidth)
+            kxy, dxkxy = kernel_fn(particles, bandwidth)
 
             # Apply sigma scaling to the attractive term
             if current_sigma is not None:
@@ -351,14 +381,12 @@ def update(
                 # float64, which would silently upcast `step` and then
                 # `displacement` even when phi is float32.
                 decay = _math.sqrt(1.0 + iteration)
-                if attr_max > 0:
-                    step = stepsize / (attr_max * decay)
-                else:
-                    step = stepsize / decay
+                step = stepsize / (attr_max * decay) if attr_max > 0 else stepsize / decay
                 displacement = step * phi
 
             elif step_schedule == "adagrad":
                 # AdaGrad with momentum
+                assert historical_grad is not None  # noqa: S101 -- step_schedule invariant
                 grad_theta = (np.matmul(kxy, precond_grads) - dxkxy) / n_particles
                 if iteration == 0:
                     historical_grad = grad_theta**2
@@ -390,6 +418,7 @@ def update(
 
             # Animation
             if animate:
+                assert figure is not None  # noqa: S101 -- set in the animation setup above
                 scatter.set_offsets(
                     np.hstack(
                         (

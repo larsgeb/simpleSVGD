@@ -1,10 +1,8 @@
 """Feature-specific tests: preconditioning, sigma, bounds, resume, callback, backward compat."""
 
 import numpy as np
-import pytest
 
 import simpleSVGD
-from simpleSVGD.lbfgs import make_lbfgs_state
 
 
 def _gaussian_grad(x, mean=0.0, var=1.0):
@@ -163,7 +161,7 @@ class TestCallback:
         x0 = np.random.normal(0, 1, (20, 1))
         iterations_seen = []
 
-        def my_callback(iteration, state):
+        def my_callback(iteration, _state):
             iterations_seen.append(iteration)
 
         simpleSVGD.update(
@@ -177,7 +175,7 @@ class TestCallback:
         x0 = np.random.normal(0, 1, (20, 2))
         states_seen = []
 
-        def my_callback(iteration, state):
+        def my_callback(_iteration, state):
             states_seen.append(state)
 
         simpleSVGD.update(

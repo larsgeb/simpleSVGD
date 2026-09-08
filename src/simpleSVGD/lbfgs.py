@@ -5,12 +5,16 @@ algorithm for use as a preconditioner in SVGD or as a standalone optimizer.
 """
 
 from dataclasses import dataclass
+from typing import Generic, overload
 
 import numpy as np
+import numpy.typing as npt
+
+from ._typing import FloatDType
 
 
 @dataclass
-class LBFGSState:
+class LBFGSState(Generic[FloatDType]):
     """Circular buffer storing L-BFGS curvature pairs (s, y).
 
     Attributes:
@@ -18,20 +22,30 @@ class LBFGSState:
         Y: Array of shape (m, n) storing y_k = g_{k+1} - g_k vectors.
         cursor: Index where the next pair will be written.
         count: Number of pairs stored so far (up to m).
+
     """
 
-    S: np.ndarray
-    Y: np.ndarray
+    S: npt.NDArray[FloatDType]
+    Y: npt.NDArray[FloatDType]
     cursor: int = 0
     count: int = 0
 
 
-def make_lbfgs_state(n: int, m: int = 10, dtype: np.dtype = np.float64) -> LBFGSState:
+@overload
+def make_lbfgs_state(n: int, m: int = 10) -> LBFGSState[np.float64]: ...
+@overload
+def make_lbfgs_state(
+    n: int, m: int = 10, *, dtype: np.dtype[FloatDType]
+) -> LBFGSState[FloatDType]: ...
+def make_lbfgs_state(
+    n: int, m: int = 10, *, dtype: np.dtype[FloatDType] | type[np.float64] = np.float64
+) -> LBFGSState[FloatDType] | LBFGSState[np.float64]:
     """Create an empty L-BFGS state with history size *m* for vectors of length *n*.
 
     *dtype* should match the dtype of the gradients/particles this state
-    will be used with (e.g. ``np.float32``), so the two-loop recursion in
-    :func:`lbfgs_direction` doesn't get upcast by a mismatched buffer dtype.
+    will be used with (e.g. ``particles.dtype``), so the two-loop recursion
+    in :func:`lbfgs_direction` doesn't get upcast by a mismatched buffer
+    dtype. Defaults to float64 when omitted.
     """
     return LBFGSState(
         S=np.zeros((m, n), dtype=dtype),
@@ -41,7 +55,9 @@ def make_lbfgs_state(n: int, m: int = 10, dtype: np.dtype = np.float64) -> LBFGS
     )
 
 
-def lbfgs_update(state: LBFGSState, s: np.ndarray, y: np.ndarray) -> None:
+def lbfgs_update(
+    state: LBFGSState[FloatDType], s: npt.NDArray[FloatDType], y: npt.NDArray[FloatDType]
+) -> None:
     """Push a new (s, y) pair into the circular buffer.
 
     Skips the update if the curvature condition y.s > 0 is not satisfied.
@@ -57,7 +73,9 @@ def lbfgs_update(state: LBFGSState, s: np.ndarray, y: np.ndarray) -> None:
     state.count = min(state.count + 1, m)
 
 
-def lbfgs_direction(state: LBFGSState, grad: np.ndarray) -> np.ndarray:
+def lbfgs_direction(
+    state: LBFGSState[FloatDType], grad: npt.NDArray[FloatDType]
+) -> npt.NDArray[FloatDType]:
     """Compute the L-BFGS search direction via two-loop recursion.
 
     Returns ``-H_k @ grad`` where H_k is the L-BFGS approximation to the

@@ -1,7 +1,6 @@
 """Distribution recovery tests for SVGD."""
 
 import numpy as np
-import pytest
 
 import simpleSVGD
 
@@ -215,7 +214,6 @@ class TestGaussianMixture:
         p = state.particles
         # Check both modes are populated
         left = np.sum(p[:, 0] < 0)
-        right = np.sum(p[:, 0] >= 0)
         frac_left = left / len(p)
         assert 0.2 < frac_left < 0.8, f"Mode balance: {frac_left:.2f}"
 

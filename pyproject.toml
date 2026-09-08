@@ -52,7 +52,6 @@ ignore = [
     "D203", "D213",  # conflict with D211/D212 (the ones we actually use); listed explicitly to silence ruff's own warning about the conflict
     "ERA001",   # false-positives on formula comments (e.g. "phi = -(K @ g - nablaK) / n")
     "INP001",   # tests/, test/, notebooks/ are not meant to be importable packages
-    "NPY002",   # legacy np.random.seed is used throughout the test suite; migration is its own dedicated PR (every seeded threshold needs re-validation)
     "TRY003", "EM101", "EM102",  # short inline exception messages are fine at this size
 ]
 

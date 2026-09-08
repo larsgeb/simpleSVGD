@@ -18,8 +18,8 @@ class Test1DGaussian:
         self.grad_fn = grad_fn
 
     def test_mean_and_std(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (200, 1))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (200, 1))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=500, stepsize=0.5, disable_progressbar=True
         )
@@ -40,8 +40,8 @@ class Test2DIsotropicGaussian:
         self.grad_fn = grad_fn
 
     def test_mean_and_cov(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (300, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (300, 2))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=800, stepsize=0.3, disable_progressbar=True
         )
@@ -67,8 +67,8 @@ class Test2DAnisotropicGaussian:
         self.grad_fn = grad_fn
 
     def test_mean_and_cov(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 3, (500, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 3, (500, 2))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
         )
@@ -97,8 +97,8 @@ class TestBananaDistribution:
         self.grad_fn = grad_fn
 
     def test_marginal_x1(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 2, (500, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 2, (500, 2))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=2000, stepsize=0.1, disable_progressbar=True
         )
@@ -108,8 +108,8 @@ class TestBananaDistribution:
         assert abs(np.std(p[:, 0]) - self.s1) < 0.8
 
     def test_conditional_structure(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 2, (500, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 2, (500, 2))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=2000, stepsize=0.1, disable_progressbar=True
         )
@@ -133,8 +133,8 @@ class TestHighDimensionalGaussian:
         self.grad_fn = grad_fn
 
     def test_normalized_kernel_maintains_spread(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (30, self.d))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (30, self.d))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=200, stepsize=0.3,
             kernel="rbf_normalized", disable_progressbar=True,
@@ -154,8 +154,8 @@ class TestHighDimensionalGaussian:
 
     def test_standard_kernel_collapses(self):
         """Standard RBF kernel loses repulsion in high dimensions."""
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (30, self.d))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (30, self.d))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=200, stepsize=0.3,
             kernel="rbf", disable_progressbar=True,
@@ -165,8 +165,8 @@ class TestHighDimensionalGaussian:
         per_dim_std_standard = np.median(np.std(p, axis=0))
 
         # Now run with normalized kernel
-        np.random.seed(42)
-        x0 = np.random.normal(0, 1, (30, self.d))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 1, (30, self.d))
         state_norm = simplesvgd.update(
             x0, self.grad_fn, n_iter=200, stepsize=0.3,
             kernel="rbf_normalized", disable_progressbar=True,
@@ -206,8 +206,8 @@ class TestGaussianMixture:
         self.grad_fn = grad_fn
 
     def test_bimodality(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 4, (500, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 4, (500, 2))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
         )
@@ -218,8 +218,8 @@ class TestGaussianMixture:
         assert 0.2 < frac_left < 0.8, f"Mode balance: {frac_left:.2f}"
 
     def test_mode_locations(self):
-        np.random.seed(42)
-        x0 = np.random.normal(0, 4, (500, 2))
+        rng = np.random.default_rng(42)
+        x0 = rng.normal(0, 4, (500, 2))
         state = simplesvgd.update(
             x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
         )

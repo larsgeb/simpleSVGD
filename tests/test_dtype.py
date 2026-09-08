@@ -47,6 +47,15 @@ def test_kernel_explicit_bandwidth_preserves_dtype(dtype):
     assert dxkxy.dtype == dtype
 
 
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_normalized_kernel_explicit_bandwidth_preserves_dtype(dtype):
+    rng = np.random.default_rng(9)
+    particles = rng.normal(size=(10, 3)).astype(dtype)
+    kxy, dxkxy = rbf_kernel_normalized(particles, h=1.5)
+    assert kxy.dtype == dtype
+    assert dxkxy.dtype == dtype
+
+
 def test_kernel_float32_matches_float64_closely():
     """float32 should be numerically close to float64, not just same-shaped noise."""
     rng = np.random.default_rng(2)

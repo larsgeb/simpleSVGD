@@ -13,11 +13,13 @@ import numpy as np
 import numpy.typing as npt
 import tqdm.auto as tqdm_auto
 
-from ._typing import FloatDType
+from ._animation import draw_frame, setup_animation
+from ._typing import Background, FloatDType
+from .config import SVGDConfig
 from .kernels import rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
-from .update import Background, update
+from .update import update
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -26,6 +28,7 @@ __version__ = "1.0.0"
 
 __all__ = [
     "LBFGSState",
+    "SVGDConfig",
     "SVGDState",
     "gradient_vectorizer",
     "lbfgs_direction",
@@ -51,7 +54,7 @@ class _TorchSchedulerLike(Protocol):
     def step(self) -> None: ...
 
 
-def update_torch(
+def update_torch(  # noqa: PLR0913 -- legacy PyTorch bridge; not covered by update()'s SVGDConfig redesign
     x0: npt.NDArray[FloatDType],
     gradient_fn: Callable[[npt.NDArray[FloatDType]], npt.NDArray[FloatDType]],
     optimizer_class: type[_TorchOptimizerLike],
@@ -94,7 +97,6 @@ def update_torch(
         Suppress the tqdm progress bar.
 
     """
-    import matplotlib.pyplot as plt  # noqa: PLC0415 -- matplotlib is an optional extra
     import torch  # noqa: PLC0415 -- torch is an optional extra  # ty: ignore[unresolved-import]
 
     from .helpers import torch_wrapper  # noqa: PLC0415 -- only needed for this optional path
@@ -109,34 +111,18 @@ def update_torch(
     if dimensions_to_plot is None:
         dimensions_to_plot = [0, 1]
 
-    if animate:
-        if figure is None:
-            figure = plt.figure(figsize=(8, 8))
-        axis = plt.gca()
-
     x0_updated = np.copy(x0)
 
-    if animate:
-        assert figure is not None  # noqa: S101 -- set in the animation setup above
-        if background is not None:
-            x1s, x2s, background_image = background
-            axis.contour(
-                x1s, x2s, np.exp(-background_image),
-                levels=20, alpha=0.5, zorder=0,
-            )
-
-        scatter = axis.scatter(
-            x0_updated[:, dimensions_to_plot[0]],
-            x0_updated[:, dimensions_to_plot[1]],
+    anim = (
+        setup_animation(
+            figure=figure,
+            background=background,
+            particles=x0_updated,
+            dimensions_to_plot=dimensions_to_plot,
         )
-
-        if background is not None:
-            plt.xlim(float(np.min(x1s)), float(np.max(x1s)))
-            plt.ylim(float(np.min(x2s)), float(np.max(x2s)))
-
-        axis.set_aspect(1)
-        figure.canvas.draw()
-        plt.pause(1e-5)
+        if animate
+        else None
+    )
 
     x0_updated_tensor = torch.tensor(x0_updated, requires_grad=True)
     total = torch_wrapper(gradient_fn, rbf_kernel)
@@ -155,16 +141,8 @@ def update_torch(
             for scheduler in schedulers:
                 scheduler.step()
 
-            if animate:
-                assert figure is not None  # noqa: S101 -- set in the animation setup above
-                scatter.set_offsets(
-                    np.hstack((
-                        x0_updated_tensor.detach()[:, dimensions_to_plot[0], None],
-                        x0_updated_tensor.detach()[:, dimensions_to_plot[1], None],
-                    ))
-                )
-                figure.canvas.draw()
-                plt.pause(1e-5)
+            if anim is not None:
+                draw_frame(anim, x0_updated_tensor.detach().numpy(), dimensions_to_plot)
 
     except KeyboardInterrupt:
         sleep(0.5)

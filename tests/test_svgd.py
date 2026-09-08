@@ -3,6 +3,7 @@
 import numpy as np
 
 import simplesvgd
+from simplesvgd import SVGDConfig
 
 
 class Test1DGaussian:
@@ -21,7 +22,7 @@ class Test1DGaussian:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 3, (200, 1))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=500, stepsize=0.5, disable_progressbar=True
+            x0, self.grad_fn, SVGDConfig(n_iter=500, stepsize=0.5, disable_progressbar=True)
         )
         p = state.particles
         assert abs(np.mean(p) - self.true_mean) < 0.4
@@ -43,7 +44,7 @@ class Test2DIsotropicGaussian:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 3, (300, 2))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=800, stepsize=0.3, disable_progressbar=True
+            x0, self.grad_fn, SVGDConfig(n_iter=800, stepsize=0.3, disable_progressbar=True)
         )
         p = state.particles
         sample_mean = np.mean(p, axis=0)
@@ -70,7 +71,7 @@ class Test2DAnisotropicGaussian:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 3, (500, 2))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
+            x0, self.grad_fn, SVGDConfig(n_iter=1500, stepsize=0.3, disable_progressbar=True)
         )
         p = state.particles
         sample_mean = np.mean(p, axis=0)
@@ -100,7 +101,7 @@ class TestBananaDistribution:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 2, (500, 2))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=2000, stepsize=0.1, disable_progressbar=True
+            x0, self.grad_fn, SVGDConfig(n_iter=2000, stepsize=0.1, disable_progressbar=True)
         )
         p = state.particles
         # x1 marginal should be N(0, s1^2=4)
@@ -111,7 +112,7 @@ class TestBananaDistribution:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 2, (500, 2))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=2000, stepsize=0.1, disable_progressbar=True
+            x0, self.grad_fn, SVGDConfig(n_iter=2000, stepsize=0.1, disable_progressbar=True)
         )
         p = state.particles
         # x2 - x1^2 should have mean ~0 and std ~s2
@@ -136,8 +137,11 @@ class TestHighDimensionalGaussian:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 1, (30, self.d))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=200, stepsize=0.3,
-            kernel="rbf_normalized", disable_progressbar=True,
+            x0,
+            self.grad_fn,
+            SVGDConfig(
+                n_iter=200, stepsize=0.3, kernel="rbf_normalized", disable_progressbar=True
+            ),
         )
         p = state.particles
         # Particles should not have collapsed. This quantity is noisy: across
@@ -157,8 +161,9 @@ class TestHighDimensionalGaussian:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 1, (30, self.d))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=200, stepsize=0.3,
-            kernel="rbf", disable_progressbar=True,
+            x0,
+            self.grad_fn,
+            SVGDConfig(n_iter=200, stepsize=0.3, kernel="rbf", disable_progressbar=True),
         )
         p = state.particles
         # Standard kernel: particles should have much less spread
@@ -168,8 +173,11 @@ class TestHighDimensionalGaussian:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 1, (30, self.d))
         state_norm = simplesvgd.update(
-            x0, self.grad_fn, n_iter=200, stepsize=0.3,
-            kernel="rbf_normalized", disable_progressbar=True,
+            x0,
+            self.grad_fn,
+            SVGDConfig(
+                n_iter=200, stepsize=0.3, kernel="rbf_normalized", disable_progressbar=True
+            ),
         )
         per_dim_std_normalized = np.median(np.std(state_norm.particles, axis=0))
 
@@ -209,7 +217,7 @@ class TestGaussianMixture:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 4, (500, 2))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
+            x0, self.grad_fn, SVGDConfig(n_iter=1500, stepsize=0.3, disable_progressbar=True)
         )
         p = state.particles
         # Check both modes are populated
@@ -221,7 +229,7 @@ class TestGaussianMixture:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 4, (500, 2))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
+            x0, self.grad_fn, SVGDConfig(n_iter=1500, stepsize=0.3, disable_progressbar=True)
         )
         p = state.particles
         left_particles = p[p[:, 0] < 0]

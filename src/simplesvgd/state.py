@@ -14,7 +14,7 @@ class SVGDState(Generic[FloatDType]):
     """Complete state of an SVGD run.
 
     This object is returned by :func:`simplesvgd.update` and can be passed
-    back via the ``resume_from`` parameter to continue optimization.
+    back via ``SVGDConfig(resume_from=...)`` to continue optimization.
 
     Attributes:
         particles: Current particle positions, shape ``(n_particles, n_dims)``.

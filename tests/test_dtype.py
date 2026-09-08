@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import simplesvgd
+from simplesvgd import SVGDConfig
 from simplesvgd.kernels import rbf_kernel, rbf_kernel_normalized
 from simplesvgd.lbfgs import lbfgs_direction, lbfgs_update, make_lbfgs_state
 
@@ -90,11 +91,13 @@ def test_update_preserves_dtype_end_to_end(dtype, preconditioner, kernel):
     state = simplesvgd.update(
         x0,
         grad_fn,
-        n_iter=5,
-        stepsize=0.1,
-        preconditioner=preconditioner,
-        kernel=kernel,
-        disable_progressbar=True,
+        SVGDConfig(
+            n_iter=5,
+            stepsize=0.1,
+            preconditioner=preconditioner,
+            kernel=kernel,
+            disable_progressbar=True,
+        ),
     )
     assert state.particles.dtype == dtype
 
@@ -109,8 +112,9 @@ def test_update_constant_step_schedule_preserves_dtype(dtype):
     rng = np.random.default_rng(6)
     x0 = rng.normal(size=(10, 5)).astype(dtype)
     state = simplesvgd.update(
-        x0, grad_fn, n_iter=5, stepsize=0.1, step_schedule="constant",
-        disable_progressbar=True,
+        x0,
+        grad_fn,
+        SVGDConfig(n_iter=5, stepsize=0.1, step_schedule="constant", disable_progressbar=True),
     )
     assert state.particles.dtype == dtype
 
@@ -125,8 +129,9 @@ def test_update_bounds_preserve_dtype(dtype):
     rng = np.random.default_rng(7)
     x0 = rng.normal(size=(10, 5)).astype(dtype)
     state = simplesvgd.update(
-        x0, grad_fn, n_iter=5, stepsize=0.1, bounds=(-2.0, 2.0),
-        disable_progressbar=True,
+        x0,
+        grad_fn,
+        SVGDConfig(n_iter=5, stepsize=0.1, bounds=(-2.0, 2.0), disable_progressbar=True),
     )
     assert state.particles.dtype == dtype
 
@@ -142,9 +147,16 @@ def test_update_hierarchical_sigma_preserves_dtype(dtype):
     rng = np.random.default_rng(8)
     x0 = rng.normal(size=(10, 3)).astype(dtype)
     state = simplesvgd.update(
-        x0, grad_fn, n_iter=5, stepsize=0.1,
-        data_sigma=1.0, estimate_sigma=True, n_data_samples=100,
-        disable_progressbar=True,
+        x0,
+        grad_fn,
+        SVGDConfig(
+            n_iter=5,
+            stepsize=0.1,
+            data_sigma=1.0,
+            estimate_sigma=True,
+            n_data_samples=100,
+            disable_progressbar=True,
+        ),
     )
     assert state.particles.dtype == dtype
 
@@ -159,6 +171,6 @@ def test_update_survives_a_float64_gradient_fn_with_float32_particles():
     rng = np.random.default_rng(5)
     x0 = rng.normal(size=(10, 5)).astype(np.float32)
     state = simplesvgd.update(
-        x0, careless_grad_fn, n_iter=5, stepsize=0.1, disable_progressbar=True,
+        x0, careless_grad_fn, SVGDConfig(n_iter=5, stepsize=0.1, disable_progressbar=True)
     )
     assert state.particles.dtype == np.float32

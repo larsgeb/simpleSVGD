@@ -6,8 +6,7 @@ from typing import Any
 import numpy.typing as npt
 import torch  # ty: ignore[unresolved-import] -- optional extra
 
-from ._typing import FloatDType
-from .update import KernelFn
+from ._typing import FloatDType, KernelFn
 
 
 def torch_wrapper(

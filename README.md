@@ -126,21 +126,26 @@ plt.title("SVGD animation on the Himmelblau function")
 state = simplesvgd.update(
     initial_samples,
     Himmelblau_grad,
-    n_iter=130,
-    stepsize=1e-1,
-    #animate=True,
-    #background=background,
-    #figure=figure,
+    simplesvgd.SVGDConfig(
+        n_iter=130,
+        stepsize=1e-1,
+        #animate=True,
+        #background=background,
+        #figure=figure,
+    ),
 )
 final_samples = state.particles
 ```
 
-`simplesvgd.update()` returns an `SVGDState`, not a raw array -- `.particles`
-holds the current particle positions and can also be passed back in via
-`resume_from` to continue a run. AdaGrad's internal parameters (momentum,
-fudge factor) aren't user-configurable; use `step_schedule="constant"` or
-`step_schedule="robbins-monro"` (see `help(simplesvgd.update)`) if you need
-different step-size behavior.
+`simplesvgd.update()` takes every tuning knob through a single
+`simplesvgd.SVGDConfig` object rather than a long kwarg list -- construct one
+with just the fields you need, the rest keep their defaults. It returns an
+`SVGDState`, not a raw array -- `.particles` holds the current particle
+positions and can also be passed back in via `SVGDConfig(resume_from=...)`
+to continue a run. AdaGrad's internal parameters (momentum, fudge factor)
+aren't user-configurable; use `step_schedule="constant"` or
+`step_schedule="robbins-monro"` (see `help(simplesvgd.SVGDConfig)`) if you
+need different step-size behavior.
 
 To animate the algorithm, simply uncomment the comments. The result should be
 similar to this:

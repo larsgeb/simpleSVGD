@@ -1,64 +1,343 @@
 """Core SVGD update function with optional preconditioning and hierarchical sigma."""
 
 import math
-from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import Generic, cast
 
 import numpy as np
 import numpy.typing as npt
 import tqdm.auto as tqdm_auto
 
-from ._typing import FloatDType
+from ._animation import Animation, draw_frame, setup_animation
+from ._typing import FloatDType, GradientFn, KernelFn
+from .config import SVGDConfig
 from .kernels import rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
 
-if TYPE_CHECKING:
-    from matplotlib.figure import Figure
+# AdaGrad's momentum and fudge factor aren't user-configurable -- they're
+# implementation details of the legacy default preconditioner, not knobs.
+_ADAGRAD_ALPHA = 0.9
+_ADAGRAD_FUDGE = 1e-6
 
-KernelFn = Callable[
-    [npt.NDArray[FloatDType], float],
-    tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
-]
-GradientFn = Callable[
-    [npt.NDArray[FloatDType]],
-    npt.NDArray[FloatDType] | tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
-]
-Background = tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType], npt.NDArray[FloatDType]]
+
+@dataclass
+class _RunState(Generic[FloatDType]):
+    """Mutable loop-local state for one `update()` call (fresh or resumed)."""
+
+    particles: npt.NDArray[FloatDType]
+    n_particles: int
+    start_iter: int
+    sigma_history: list[float]
+    misfit_history: list[float]
+    particle_misfit_history: list[list[float]]
+    prev_particles: npt.NDArray[FloatDType] | None
+    prev_grads: npt.NDArray[FloatDType] | None
+    lbfgs_states: list[LBFGSState[FloatDType]] | None
+    historical_grad: npt.NDArray[FloatDType] | None
+    current_sigma: float | None
+
+
+@dataclass
+class _StepInputs(Generic[FloatDType]):
+    """Per-iteration quantities needed to compute the particle displacement."""
+
+    kernel_matrix: npt.NDArray[FloatDType]
+    kernel_grad: npt.NDArray[FloatDType]
+    phi: npt.NDArray[FloatDType]
+    attractive: npt.NDArray[FloatDType]
+    precond_grads: npt.NDArray[FloatDType]
+
+
+def _resolve_kernel_fn(kernel: "str | KernelFn[FloatDType] | None") -> KernelFn[FloatDType]:
+    if kernel is None or kernel == "rbf":
+        return rbf_kernel
+    if kernel == "rbf_normalized":
+        return rbf_kernel_normalized
+    if not isinstance(kernel, str):
+        return kernel
+    raise ValueError(f"Unknown kernel: {kernel!r}")
+
+
+def _resolve_step_schedule(step_schedule: str | None, preconditioner: str | None) -> str:
+    if step_schedule is not None:
+        return step_schedule
+    return "robbins-monro" if preconditioner == "lbfgs" else "adagrad"
+
+
+def _init_run_state(
+    x0: npt.NDArray[FloatDType],
+    config: SVGDConfig[FloatDType],
+    *,
+    use_lbfgs: bool,
+    step_schedule: str,
+) -> _RunState[FloatDType]:
+    resume_from = config.resume_from
+    if resume_from is None:
+        particles = np.copy(x0)
+        n_particles = particles.shape[0]
+        lbfgs_states = (
+            [
+                make_lbfgs_state(particles.shape[1], m=config.lbfgs_history, dtype=particles.dtype)
+                for _ in range(n_particles)
+            ]
+            if use_lbfgs
+            else None
+        )
+        return _RunState(
+            particles=particles,
+            n_particles=n_particles,
+            start_iter=0,
+            sigma_history=[],
+            misfit_history=[],
+            particle_misfit_history=[],
+            prev_particles=None,
+            prev_grads=None,
+            lbfgs_states=lbfgs_states,
+            historical_grad=np.zeros_like(particles) if step_schedule == "adagrad" else None,
+            current_sigma=config.data_sigma,
+        )
+
+    particles = resume_from.particles.copy()
+    n_particles = particles.shape[0]
+    if use_lbfgs and resume_from.lbfgs_states is not None:
+        lbfgs_states = resume_from.lbfgs_states
+    elif use_lbfgs:
+        lbfgs_states = [
+            make_lbfgs_state(particles.shape[1], m=config.lbfgs_history, dtype=particles.dtype)
+            for _ in range(n_particles)
+        ]
+    else:
+        lbfgs_states = None
+
+    if step_schedule == "adagrad":
+        historical_grad = (
+            resume_from.historical_grad.copy()
+            if resume_from.historical_grad is not None
+            else np.zeros_like(particles)
+        )
+    else:
+        historical_grad = None
+
+    return _RunState(
+        particles=particles,
+        n_particles=n_particles,
+        start_iter=resume_from.iteration,
+        sigma_history=list(resume_from.sigma_history),
+        misfit_history=list(resume_from.misfit_history),
+        particle_misfit_history=list(resume_from.particle_misfit_history),
+        prev_particles=(
+            resume_from.prev_particles.copy() if resume_from.prev_particles is not None else None
+        ),
+        prev_grads=resume_from.prev_grads.copy() if resume_from.prev_grads is not None else None,
+        lbfgs_states=lbfgs_states,
+        historical_grad=historical_grad,
+        current_sigma=(
+            resume_from.data_sigma if resume_from.data_sigma is not None else config.data_sigma
+        ),
+    )
+
+
+def _resolve_sigma_prior_beta(
+    config: SVGDConfig[FloatDType], current_sigma: float | None
+) -> float | None:
+    if not config.estimate_sigma:
+        return config.sigma_prior_beta
+    if config.n_data_samples is None:
+        raise ValueError("n_data_samples is required when estimate_sigma=True")
+    if current_sigma is None:
+        raise ValueError("data_sigma is required when estimate_sigma=True")
+    if config.sigma_prior_beta is not None:
+        return config.sigma_prior_beta
+    return (config.sigma_prior_alpha - 1.0) * current_sigma**2
+
+
+def _setup_animation(
+    config: SVGDConfig[FloatDType], particles: npt.NDArray[FloatDType]
+) -> Animation[FloatDType] | None:
+    if not config.animate:
+        return None
+    return setup_animation(
+        figure=config.figure,
+        background=config.background,
+        particles=particles,
+        dimensions_to_plot=config.dimensions_to_plot,
+    )
+
+
+def _evaluate_gradients(
+    gradient_fn: GradientFn[FloatDType],
+    particles: npt.NDArray[FloatDType],
+    *,
+    needs_misfits: bool,
+) -> tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType] | None]:
+    # gradient_fn's actual return shape depends on needs_misfits, a runtime
+    # value the type system can't narrow -- re-asserted via cast() rather
+    # than weakening the signature to Any.
+    result = gradient_fn(particles)
+    misfits: npt.NDArray[FloatDType] | None
+    if needs_misfits:
+        all_grads, misfits = cast(
+            "tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]]", result
+        )
+        misfits = np.asarray(misfits)
+    else:
+        all_grads = cast("npt.NDArray[FloatDType]", result)
+        misfits = None
+    # gradient_fn is user-supplied and easy to write in a way that silently
+    # returns float64 (e.g. building constants with np.zeros(d) instead of
+    # matching particles' dtype) -- without this, that alone would upcast
+    # the whole particle array on the first `particles + displacement` below.
+    all_grads = np.asarray(all_grads, dtype=particles.dtype)
+    return all_grads, misfits
+
+
+def _lbfgs_curvature_update(
+    run: _RunState[FloatDType], all_grads: npt.NDArray[FloatDType], *, use_lbfgs: bool
+) -> None:
+    if not (use_lbfgs and run.prev_particles is not None):
+        return
+    assert run.lbfgs_states is not None  # noqa: S101 -- use_lbfgs invariant
+    assert run.prev_grads is not None  # noqa: S101 -- set together with prev_particles
+    for i in range(run.n_particles):
+        s_vec = run.particles[i] - run.prev_particles[i]
+        y_vec = all_grads[i] - run.prev_grads[i]
+        lbfgs_update(run.lbfgs_states[i], s_vec, y_vec)
+
+
+def _record_misfits(
+    run: _RunState[FloatDType], misfits: npt.NDArray[FloatDType] | None
+) -> float | None:
+    if misfits is None:
+        return None
+    mean_misfit = float(np.mean(misfits))
+    run.misfit_history.append(mean_misfit)
+    run.particle_misfit_history.append(misfits.tolist())
+    return mean_misfit
+
+
+def _update_sigma(
+    run: _RunState[FloatDType],
+    config: SVGDConfig[FloatDType],
+    misfits: npt.NDArray[FloatDType] | None,
+    sigma_prior_beta: float | None,
+) -> None:
+    if not (config.estimate_sigma and misfits is not None):
+        return
+    assert sigma_prior_beta is not None  # noqa: S101 -- set by _resolve_sigma_prior_beta when estimate_sigma
+    assert config.n_data_samples is not None  # noqa: S101 -- checked by _resolve_sigma_prior_beta
+    raw_misfits_total = float(np.sum(misfits))
+    alpha_post = config.sigma_prior_alpha + run.n_particles * config.n_data_samples / 2.0
+    beta_post = sigma_prior_beta + raw_misfits_total
+    sigma_sq = beta_post / (alpha_post - 1.0)
+    run.current_sigma = float(np.sqrt(sigma_sq))
+
+
+def _record_sigma_history(run: _RunState[FloatDType]) -> None:
+    if run.current_sigma is not None:
+        run.sigma_history.append(run.current_sigma)
+
+
+def _scale_grads_by_sigma(
+    precond_grads: npt.NDArray[FloatDType], current_sigma: float | None
+) -> npt.NDArray[FloatDType]:
+    if current_sigma is None:
+        return precond_grads
+    return cast("npt.NDArray[FloatDType]", precond_grads / (current_sigma**2))
+
+
+def _store_lbfgs_prev(
+    run: _RunState[FloatDType], all_grads: npt.NDArray[FloatDType], *, use_lbfgs: bool
+) -> None:
+    if not use_lbfgs:
+        return
+    run.prev_particles = run.particles.copy()
+    run.prev_grads = all_grads.copy()
+
+
+def _report_progress(
+    outer: tqdm_auto.tqdm, mean_misfit: float | None, current_sigma: float | None
+) -> None:
+    postfix = {}
+    if mean_misfit is not None:
+        postfix["misfit"] = f"{mean_misfit:.4e}"
+    if current_sigma is not None:
+        postfix["sigma"] = f"{current_sigma:.2e}"
+    if postfix:
+        outer.set_postfix(**postfix)
+
+
+def _snapshot(run: _RunState[FloatDType], iteration: int) -> SVGDState[FloatDType]:
+    return SVGDState(
+        particles=run.particles.copy(),
+        iteration=iteration,
+        lbfgs_states=run.lbfgs_states,
+        historical_grad=run.historical_grad,
+        data_sigma=run.current_sigma,
+        sigma_history=list(run.sigma_history),
+        misfit_history=list(run.misfit_history),
+        particle_misfit_history=list(run.particle_misfit_history),
+        prev_particles=run.prev_particles,
+        prev_grads=run.prev_grads,
+    )
+
+
+def _precondition_gradients(
+    run: _RunState[FloatDType], all_grads: npt.NDArray[FloatDType], *, use_lbfgs: bool
+) -> npt.NDArray[FloatDType]:
+    if not use_lbfgs:
+        return all_grads
+    assert run.lbfgs_states is not None  # noqa: S101 -- use_lbfgs invariant
+    precond_grads = np.zeros_like(run.particles)
+    for i in range(run.n_particles):
+        # lbfgs_direction returns -H*g; negate to get H*g
+        precond_grads[i] = -lbfgs_direction(run.lbfgs_states[i], all_grads[i])
+    return precond_grads
+
+
+def _compute_displacement(
+    step_schedule: str,
+    run: _RunState[FloatDType],
+    config: SVGDConfig[FloatDType],
+    inputs: _StepInputs[FloatDType],
+    iteration: int,
+) -> npt.NDArray[FloatDType]:
+    if step_schedule == "robbins-monro":
+        attr_max = np.max(np.abs(inputs.attractive)) / run.n_particles
+        # math.sqrt (not np.sqrt) on this plain-Python scalar: np.sqrt of a
+        # bare int/float with no array context always returns float64, which
+        # would silently upcast `step` and then `displacement` even when phi
+        # is float32.
+        decay = math.sqrt(1.0 + iteration)
+        step = config.stepsize / (attr_max * decay) if attr_max > 0 else config.stepsize / decay
+        # scalar * NDArray[FloatDType] loses the TypeVar binding in numpy's
+        # stubs (same rough edge as the .min()/.max() cases elsewhere).
+        return cast("npt.NDArray[FloatDType]", step * inputs.phi)
+
+    if step_schedule == "adagrad":
+        assert run.historical_grad is not None  # noqa: S101 -- step_schedule invariant
+        grad_theta = (
+            np.matmul(inputs.kernel_matrix, inputs.precond_grads) - inputs.kernel_grad
+        ) / run.n_particles
+        if iteration == 0:
+            run.historical_grad = grad_theta**2
+        else:
+            run.historical_grad = (
+                _ADAGRAD_ALPHA * run.historical_grad + (1 - _ADAGRAD_ALPHA) * grad_theta**2
+            )
+        adj_grad = grad_theta / (_ADAGRAD_FUDGE + np.sqrt(run.historical_grad))
+        return -config.stepsize * adj_grad
+
+    if step_schedule == "constant":
+        return cast("npt.NDArray[FloatDType]", config.stepsize * inputs.phi)
+
+    raise ValueError(f"Unknown step_schedule: {step_schedule!r}")
 
 
 def update(
     x0: npt.NDArray[FloatDType],
     gradient_fn: GradientFn[FloatDType],
-    *,
-    n_iter: int = 1000,
-    stepsize: float = 1e-3,
-    bandwidth: float = -1,
-    # --- Preconditioning ---
-    preconditioner: str | None = None,
-    lbfgs_history: int = 10,
-    # --- Step schedule ---
-    step_schedule: str | None = None,
-    # --- Hierarchical sigma ---
-    data_sigma: float | None = None,
-    estimate_sigma: bool = False,
-    sigma_prior_alpha: float = 2.0,
-    sigma_prior_beta: float | None = None,
-    n_data_samples: int | None = None,
-    # --- Kernel ---
-    kernel: str | KernelFn[FloatDType] | None = None,
-    # --- Bounds ---
-    bounds: tuple[float, float] | None = None,
-    # --- Callback and control ---
-    callback: Callable[[int, SVGDState[FloatDType]], None] | None = None,
-    disable_progressbar: bool = False,
-    # --- Resume ---
-    resume_from: SVGDState[FloatDType] | None = None,
-    # --- Legacy animation ---
-    animate: bool = False,
-    figure: "Figure | None" = None,
-    dimensions_to_plot: list[int] | None = None,
-    background: Background[FloatDType] | None = None,
+    config: SVGDConfig[FloatDType] | None = None,
 ) -> SVGDState[FloatDType]:
     """Update a collection of samples using Stein Variational Gradient Descent.
 
@@ -71,64 +350,19 @@ def update(
         single precision. ``gradient_fn`` should return gradients in the
         same dtype; if it doesn't, they are cast to ``x0``'s dtype before
         use, so a careless ``gradient_fn`` can't silently upcast the run.
+        Ignored when ``config.resume_from`` is set -- the run continues from
+        ``resume_from.particles`` instead.
     gradient_fn : callable
         Computes gradients of the negative log-probability. Accepts particles
         of shape ``(n_particles, n_dims)`` and returns gradients of the same
-        shape. When ``data_sigma`` is set or ``estimate_sigma`` is ``True``,
-        must return ``(gradients, misfits)`` where misfits has shape
-        ``(n_particles,)`` -- which of the two return shapes is actually
-        used is a runtime choice this type can't narrow statically, so it's
-        re-asserted via ``cast`` at the one call site below.
-    n_iter : int
-        Number of iterations.
-    stepsize : float
-        Base step size (interpretation depends on ``step_schedule``).
-    bandwidth : float
-        RBF kernel bandwidth. ``-1`` for automatic (median heuristic).
-    preconditioner : str or None
-        ``None`` for AdaGrad+momentum (legacy). ``"lbfgs"`` for per-particle
-        L-BFGS preconditioning with Robbins-Monro step decay.
-    lbfgs_history : int
-        Number of curvature pairs to store per particle (only for ``"lbfgs"``).
-    step_schedule : str or None
-        ``None`` uses default for the preconditioner (AdaGrad for ``None``,
-        Robbins-Monro for ``"lbfgs"``). ``"robbins-monro"`` uses
-        ``stepsize / (|attractive|_max * sqrt(1+t))``. ``"constant"`` uses
-        fixed ``stepsize``. ``"adagrad"`` uses AdaGrad+momentum.
-    data_sigma : float or None
-        Likelihood noise standard deviation. When set, gradients are scaled
-        by ``1/sigma**2`` in the attractive SVGD term.
-    estimate_sigma : bool
-        If ``True``, update ``data_sigma`` at each iteration using a conjugate
-        inverse-gamma posterior. Requires ``gradient_fn`` to return misfits.
-    sigma_prior_alpha : float
-        Shape parameter of the inverse-gamma prior on ``sigma**2``.
-    sigma_prior_beta : float or None
-        Scale parameter of the inverse-gamma prior. Defaults to
-        ``(sigma_prior_alpha - 1) * data_sigma**2``.
-    n_data_samples : int or None
-        Total number of data samples (needed for hierarchical sigma update).
-    kernel : str or None
-        Kernel type. ``None`` or ``"rbf"`` for standard RBF. ``"rbf_normalized"``
-        for per-dimension normalized RBF, recommended for high-dimensional
-        parameter spaces (d > ~100) where standard RBF repulsion vanishes.
-    bounds : tuple or None
-        ``(lower, upper)`` bounds for particle clipping.
-    callback : callable or None
-        Called as ``callback(iteration, state)`` after each gradient evaluation.
-    disable_progressbar : bool
-        Suppress the tqdm progress bar.
-    resume_from : SVGDState or None
-        Resume from a previous run's state.
-    animate : bool
-        Legacy animation support (requires matplotlib).
-    figure : matplotlib Figure or None
-        Figure to draw the animation on; created if not given.
-    dimensions_to_plot : list of int or None
-        Which two particle dimensions to animate. Defaults to ``[0, 1]``.
-    background : tuple or None
-        ``(x1s, x2s, background_image)`` contour data to draw behind the
-        animation.
+        shape. When ``config.data_sigma`` is set or ``config.estimate_sigma``
+        is ``True``, must return ``(gradients, misfits)`` where misfits has
+        shape ``(n_particles,)``.
+    config : SVGDConfig or None
+        Every other tunable of the run (iteration count, step size,
+        preconditioner, kernel, bounds, callback, resume, animation, ...).
+        ``None`` uses ``SVGDConfig()``'s defaults. See :class:`SVGDConfig`
+        for the full list of fields.
 
     Returns
     -------
@@ -138,307 +372,68 @@ def update(
     """
     if x0 is None or gradient_fn is None:
         raise ValueError("x0 and gradient_fn cannot be None!")
+    if config is None:
+        config = SVGDConfig()
 
-    if dimensions_to_plot is None:
-        dimensions_to_plot = [0, 1]
+    kernel_fn = _resolve_kernel_fn(config.kernel)
+    needs_misfits = config.data_sigma is not None or config.estimate_sigma
+    step_schedule = _resolve_step_schedule(config.step_schedule, config.preconditioner)
+    use_lbfgs = config.preconditioner == "lbfgs"
 
-    # Resolve kernel function
-    kernel_fn: KernelFn[FloatDType]
-    if kernel is None or kernel == "rbf":
-        kernel_fn = rbf_kernel
-    elif kernel == "rbf_normalized":
-        kernel_fn = rbf_kernel_normalized
-    elif not isinstance(kernel, str):
-        kernel_fn = kernel
-    else:
-        raise ValueError(f"Unknown kernel: {kernel!r}")
+    run = _init_run_state(x0, config, use_lbfgs=use_lbfgs, step_schedule=step_schedule)
+    sigma_prior_beta = _resolve_sigma_prior_beta(config, run.current_sigma)
+    anim = _setup_animation(config, run.particles)
 
-    # Determine whether gradient_fn returns misfits
-    needs_misfits = data_sigma is not None or estimate_sigma
-
-    # Resolve step schedule
-    if step_schedule is None:
-        step_schedule = "robbins-monro" if preconditioner == "lbfgs" else "adagrad"
-
-    # Resolve preconditioner
-    use_lbfgs = preconditioner == "lbfgs"
-
-    # -------------------------------------------------------------------------
-    # Initialize or resume state
-    # -------------------------------------------------------------------------
-    lbfgs_states: list[LBFGSState[FloatDType]] | None
-    historical_grad: npt.NDArray[FloatDType] | None
-    if resume_from is not None:
-        particles = resume_from.particles.copy()
-        n_particles = particles.shape[0]
-        start_iter = resume_from.iteration
-        sigma_history = list(resume_from.sigma_history)
-        misfit_history = list(resume_from.misfit_history)
-        particle_misfit_history = list(resume_from.particle_misfit_history)
-        prev_particles = (
-            resume_from.prev_particles.copy()
-            if resume_from.prev_particles is not None
-            else None
-        )
-        prev_grads = (
-            resume_from.prev_grads.copy()
-            if resume_from.prev_grads is not None
-            else None
-        )
-
-        if use_lbfgs and resume_from.lbfgs_states is not None:
-            lbfgs_states = resume_from.lbfgs_states
-        elif use_lbfgs:
-            lbfgs_states = [
-                make_lbfgs_state(particles.shape[1], m=lbfgs_history, dtype=particles.dtype)
-                for _ in range(n_particles)
-            ]
-        else:
-            lbfgs_states = None
-
-        if step_schedule == "adagrad":
-            historical_grad = (
-                resume_from.historical_grad.copy()
-                if resume_from.historical_grad is not None
-                else np.zeros_like(particles)
-            )
-        else:
-            historical_grad = None
-
-        current_sigma = resume_from.data_sigma if resume_from.data_sigma is not None else data_sigma
-    else:
-        particles = np.copy(x0)
-        n_particles = particles.shape[0]
-        start_iter = 0
-        sigma_history = []
-        misfit_history = []
-        particle_misfit_history = []
-        prev_particles = None
-        prev_grads = None
-
-        if use_lbfgs:
-            lbfgs_states = [
-                make_lbfgs_state(particles.shape[1], m=lbfgs_history, dtype=particles.dtype)
-                for _ in range(n_particles)
-            ]
-        else:
-            lbfgs_states = None
-
-        historical_grad = np.zeros_like(particles) if step_schedule == "adagrad" else None
-        current_sigma = data_sigma
-
-    # Default sigma prior beta
-    if estimate_sigma:
-        if n_data_samples is None:
-            raise ValueError("n_data_samples is required when estimate_sigma=True")
-        if current_sigma is None:
-            raise ValueError("data_sigma is required when estimate_sigma=True")
-        if sigma_prior_beta is None:
-            sigma_prior_beta = (sigma_prior_alpha - 1.0) * current_sigma**2
-
-    # -------------------------------------------------------------------------
-    # Animation setup (legacy)
-    # -------------------------------------------------------------------------
-    if animate:
-        import matplotlib.pyplot as plt  # noqa: PLC0415 -- matplotlib is an optional extra
-
-        if figure is None:
-            figure = plt.figure(figsize=(8, 8))
-        assert figure is not None  # noqa: S101 -- just assigned above if it was None
-        axis = plt.gca()
-
-        if background is not None:
-            x1s, x2s, background_image = background
-            axis.contour(
-                x1s, x2s, np.exp(-background_image), levels=20, alpha=0.5, zorder=0
-            )
-
-        scatter = axis.scatter(
-            particles[:, dimensions_to_plot[0]],
-            particles[:, dimensions_to_plot[1]],
-        )
-
-        if background is not None:
-            plt.xlim(float(np.min(x1s)), float(np.max(x1s)))
-            plt.ylim(float(np.min(x2s)), float(np.max(x2s)))
-
-        axis.set_aspect(1)
-        figure.canvas.draw()
-        plt.pause(1e-5)
-
-    # -------------------------------------------------------------------------
-    # AdaGrad parameters
-    # -------------------------------------------------------------------------
-    adagrad_alpha = 0.9
-    adagrad_fudge = 1e-6
-
-    # -------------------------------------------------------------------------
-    # Main SVGD loop
-    # -------------------------------------------------------------------------
     outer = tqdm_auto.trange(
-        n_iter, desc="SVGD", unit="iter", disable=disable_progressbar
+        config.n_iter, desc="SVGD", unit="iter", disable=config.disable_progressbar
     )
     try:
         for loop_iter in outer:
-            iteration = start_iter + loop_iter
+            iteration = run.start_iter + loop_iter
 
-            # Evaluate gradients (and optionally misfits) at all particles.
-            # gradient_fn's actual return shape depends on needs_misfits, a
-            # runtime value the type system can't narrow -- re-asserted via
-            # cast() rather than weakening the signature to Any.
-            result = gradient_fn(particles)
-            misfits: npt.NDArray[FloatDType] | None
-            if needs_misfits:
-                all_grads, misfits = cast(
-                    "tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]]", result
-                )
-                misfits = np.asarray(misfits)
-            else:
-                all_grads = cast("npt.NDArray[FloatDType]", result)
-                misfits = None
-            # gradient_fn is user-supplied and easy to write in a way that
-            # silently returns float64 (e.g. building constants with
-            # np.zeros(d) instead of matching particles' dtype) -- without
-            # this, that alone would upcast the whole particle array on the
-            # first `particles + displacement` below.
-            all_grads = np.asarray(all_grads, dtype=particles.dtype)
+            all_grads, misfits = _evaluate_gradients(
+                gradient_fn, run.particles, needs_misfits=needs_misfits
+            )
+            _lbfgs_curvature_update(run, all_grads, use_lbfgs=use_lbfgs)
 
-            # Deferred L-BFGS curvature update
-            if use_lbfgs and prev_particles is not None:
-                assert lbfgs_states is not None  # noqa: S101 -- use_lbfgs invariant
-                assert prev_grads is not None  # noqa: S101 -- set together with prev_particles
-                for i in range(n_particles):
-                    s_vec = particles[i] - prev_particles[i]
-                    y_vec = all_grads[i] - prev_grads[i]
-                    lbfgs_update(lbfgs_states[i], s_vec, y_vec)
+            mean_misfit = _record_misfits(run, misfits)
+            _update_sigma(run, config, misfits, sigma_prior_beta)
+            _record_sigma_history(run)
 
-            # Record misfits
-            if misfits is not None:
-                mean_misfit = float(np.mean(misfits))
-                misfit_history.append(mean_misfit)
-                particle_misfit_history.append(misfits.tolist())
+            _report_progress(outer, mean_misfit, run.current_sigma)
 
-            # Hierarchical sigma estimation
-            if estimate_sigma and misfits is not None:
-                assert sigma_prior_beta is not None  # noqa: S101 -- set above when estimate_sigma
-                raw_misfits_total = float(np.sum(misfits))
-                alpha_post = sigma_prior_alpha + n_particles * n_data_samples / 2.0
-                beta_post = sigma_prior_beta + raw_misfits_total
-                sigma_sq = beta_post / (alpha_post - 1.0)
-                current_sigma = float(np.sqrt(sigma_sq))
-
-            if current_sigma is not None:
-                sigma_history.append(current_sigma)
-
-            # Progress bar
-            postfix = {}
-            if misfits is not None:
-                postfix["misfit"] = f"{mean_misfit:.4e}"
-            if current_sigma is not None:
-                postfix["sigma"] = f"{current_sigma:.2e}"
-            if postfix:
-                outer.set_postfix(**postfix)
-
-            # Callback
-            if callback is not None:
-                state_snapshot = SVGDState(
-                    particles=particles.copy(),
-                    iteration=iteration,
-                    lbfgs_states=lbfgs_states,
-                    historical_grad=historical_grad,
-                    data_sigma=current_sigma,
-                    sigma_history=list(sigma_history),
-                    misfit_history=list(misfit_history),
-                    particle_misfit_history=list(particle_misfit_history),
-                    prev_particles=prev_particles,
-                    prev_grads=prev_grads,
-                )
-                callback(iteration, state_snapshot)
+            if config.callback is not None:
+                config.callback(iteration, _snapshot(run, iteration))
 
             # Last iteration: don't update particles
-            if loop_iter == n_iter - 1:
+            if loop_iter == config.n_iter - 1:
                 break
 
-            # Precondition gradients
-            if use_lbfgs:
-                assert lbfgs_states is not None  # noqa: S101 -- use_lbfgs invariant
-                precond_grads = np.zeros_like(particles)
-                for i in range(n_particles):
-                    # lbfgs_direction returns -H*g; negate to get H*g
-                    precond_grads[i] = -lbfgs_direction(lbfgs_states[i], all_grads[i])
-            else:
-                precond_grads = all_grads
-
-            # Compute kernel
-            kernel_matrix, kernel_grad = kernel_fn(particles, bandwidth)
-
-            # Apply sigma scaling to the attractive term
-            if current_sigma is not None:
-                grads_scaled = precond_grads / (current_sigma**2)
-            else:
-                grads_scaled = precond_grads
-
+            precond_grads = _precondition_gradients(run, all_grads, use_lbfgs=use_lbfgs)
+            kernel_matrix, kernel_grad = kernel_fn(run.particles, config.bandwidth)
+            grads_scaled = _scale_grads_by_sigma(precond_grads, run.current_sigma)
             # SVGD update direction:
             #   phi = -(K @ grads_scaled - nabla_K) / n_particles
             attractive = np.matmul(kernel_matrix, grads_scaled)
-            phi = -(attractive - kernel_grad) / n_particles
+            phi = -(attractive - kernel_grad) / run.n_particles
 
-            # Compute step size
-            if step_schedule == "robbins-monro":
-                attr_max = np.max(np.abs(attractive)) / n_particles
-                # math.sqrt (not np.sqrt) on this plain-Python scalar: np.sqrt
-                # of a bare int/float with no array context always returns
-                # float64, which would silently upcast `step` and then
-                # `displacement` even when phi is float32.
-                decay = math.sqrt(1.0 + iteration)
-                step = stepsize / (attr_max * decay) if attr_max > 0 else stepsize / decay
-                displacement = step * phi
+            inputs = _StepInputs(
+                kernel_matrix=kernel_matrix,
+                kernel_grad=kernel_grad,
+                phi=phi,
+                attractive=attractive,
+                precond_grads=precond_grads,
+            )
+            displacement = _compute_displacement(step_schedule, run, config, inputs, iteration)
+            _store_lbfgs_prev(run, all_grads, use_lbfgs=use_lbfgs)
 
-            elif step_schedule == "adagrad":
-                # AdaGrad with momentum
-                assert historical_grad is not None  # noqa: S101 -- step_schedule invariant
-                grad_theta = (np.matmul(kernel_matrix, precond_grads) - kernel_grad) / n_particles
-                if iteration == 0:
-                    historical_grad = grad_theta**2
-                else:
-                    historical_grad = (
-                        adagrad_alpha * historical_grad
-                        + (1 - adagrad_alpha) * grad_theta**2
-                    )
-                adj_grad = grad_theta / (adagrad_fudge + np.sqrt(historical_grad))
-                displacement = -stepsize * adj_grad
+            run.particles = run.particles + displacement
 
-            elif step_schedule == "constant":
-                displacement = stepsize * phi
+            if config.bounds is not None:
+                run.particles = np.clip(run.particles, config.bounds[0], config.bounds[1])
 
-            else:
-                raise ValueError(f"Unknown step_schedule: {step_schedule!r}")
-
-            # Store for deferred L-BFGS
-            if use_lbfgs:
-                prev_particles = particles.copy()
-                prev_grads = all_grads.copy()
-
-            # Update particles
-            particles = particles + displacement
-
-            # Enforce bounds
-            if bounds is not None:
-                particles = np.clip(particles, bounds[0], bounds[1])
-
-            # Animation
-            if animate:
-                assert figure is not None  # noqa: S101 -- set in the animation setup above
-                scatter.set_offsets(
-                    np.hstack(
-                        (
-                            particles[:, dimensions_to_plot[0], None],
-                            particles[:, dimensions_to_plot[1], None],
-                        )
-                    )
-                )
-                figure.canvas.draw()
-                plt.pause(1e-5)
+            if anim is not None:
+                draw_frame(anim, run.particles, config.dimensions_to_plot)
 
     except KeyboardInterrupt:
         pass
@@ -446,14 +441,14 @@ def update(
         outer.close()
 
     return SVGDState(
-        particles=particles,
-        iteration=start_iter + n_iter,
-        lbfgs_states=lbfgs_states,
-        historical_grad=historical_grad,
-        data_sigma=current_sigma,
-        sigma_history=sigma_history,
-        misfit_history=misfit_history,
-        particle_misfit_history=particle_misfit_history,
-        prev_particles=prev_particles if use_lbfgs else None,
-        prev_grads=prev_grads if use_lbfgs else None,
+        particles=run.particles,
+        iteration=run.start_iter + config.n_iter,
+        lbfgs_states=run.lbfgs_states,
+        historical_grad=run.historical_grad,
+        data_sigma=run.current_sigma,
+        sigma_history=run.sigma_history,
+        misfit_history=run.misfit_history,
+        particle_misfit_history=run.particle_misfit_history,
+        prev_particles=run.prev_particles if use_lbfgs else None,
+        prev_grads=run.prev_grads if use_lbfgs else None,
     )

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import simplesvgd
-from simplesvgd import SVGDConfig
+from simplesvgd import SigmaConfig, SVGDConfig
 from simplesvgd.kernels import rbf_kernel, rbf_kernel_normalized
 from simplesvgd.lbfgs import lbfgs_direction, lbfgs_update, make_lbfgs_state
 
@@ -152,9 +152,7 @@ def test_update_hierarchical_sigma_preserves_dtype(dtype):
         SVGDConfig(
             n_iter=5,
             stepsize=0.1,
-            data_sigma=1.0,
-            estimate_sigma=True,
-            n_data_samples=100,
+            sigma=SigmaConfig(value=1.0, estimate=True, n_data_samples=100),
             disable_progressbar=True,
         ),
     )

@@ -78,7 +78,7 @@ def _init_run_state(
         n_particles = particles.shape[0]
         lbfgs_states = (
             [
-                make_lbfgs_state(particles.shape[1], m=config.lbfgs_history, dtype=particles.dtype)
+                make_lbfgs_state(particles.shape[1], m=config.lbfgs.history, dtype=particles.dtype)
                 for _ in range(n_particles)
             ]
             if use_lbfgs
@@ -95,7 +95,7 @@ def _init_run_state(
             prev_grads=None,
             lbfgs_states=lbfgs_states,
             historical_grad=np.zeros_like(particles) if step_schedule == "adagrad" else None,
-            current_sigma=config.data_sigma,
+            current_sigma=config.sigma.value,
         )
 
     particles = resume_from.particles.copy()
@@ -104,7 +104,7 @@ def _init_run_state(
         lbfgs_states = resume_from.lbfgs_states
     elif use_lbfgs:
         lbfgs_states = [
-            make_lbfgs_state(particles.shape[1], m=config.lbfgs_history, dtype=particles.dtype)
+            make_lbfgs_state(particles.shape[1], m=config.lbfgs.history, dtype=particles.dtype)
             for _ in range(n_particles)
         ]
     else:
@@ -133,7 +133,7 @@ def _init_run_state(
         lbfgs_states=lbfgs_states,
         historical_grad=historical_grad,
         current_sigma=(
-            resume_from.data_sigma if resume_from.data_sigma is not None else config.data_sigma
+            resume_from.data_sigma if resume_from.data_sigma is not None else config.sigma.value
         ),
     )
 
@@ -141,27 +141,27 @@ def _init_run_state(
 def _resolve_sigma_prior_beta(
     config: SVGDConfig[FloatDType], current_sigma: float | None
 ) -> float | None:
-    if not config.estimate_sigma:
-        return config.sigma_prior_beta
-    if config.n_data_samples is None:
+    if not config.sigma.estimate:
+        return config.sigma.prior_beta
+    if config.sigma.n_data_samples is None:
         raise ValueError("n_data_samples is required when estimate_sigma=True")
     if current_sigma is None:
         raise ValueError("data_sigma is required when estimate_sigma=True")
-    if config.sigma_prior_beta is not None:
-        return config.sigma_prior_beta
-    return (config.sigma_prior_alpha - 1.0) * current_sigma**2
+    if config.sigma.prior_beta is not None:
+        return config.sigma.prior_beta
+    return (config.sigma.prior_alpha - 1.0) * current_sigma**2
 
 
 def _setup_animation(
     config: SVGDConfig[FloatDType], particles: npt.NDArray[FloatDType]
 ) -> Animation[FloatDType] | None:
-    if not config.animate:
+    if not config.animation.enabled:
         return None
     return setup_animation(
-        figure=config.figure,
-        background=config.background,
+        figure=config.animation.figure,
+        background=config.animation.background,
         particles=particles,
-        dimensions_to_plot=config.dimensions_to_plot,
+        dimensions_to_plot=config.animation.dimensions_to_plot,
     )
 
 
@@ -222,12 +222,12 @@ def _update_sigma(
     misfits: npt.NDArray[FloatDType] | None,
     sigma_prior_beta: float | None,
 ) -> None:
-    if not (config.estimate_sigma and misfits is not None):
+    if not (config.sigma.estimate and misfits is not None):
         return
     assert sigma_prior_beta is not None  # noqa: S101 -- set by _resolve_sigma_prior_beta when estimate_sigma
-    assert config.n_data_samples is not None  # noqa: S101 -- checked by _resolve_sigma_prior_beta
+    assert config.sigma.n_data_samples is not None  # noqa: S101 -- checked by _resolve_sigma_prior_beta
     raw_misfits_total = float(np.sum(misfits))
-    alpha_post = config.sigma_prior_alpha + run.n_particles * config.n_data_samples / 2.0
+    alpha_post = config.sigma.prior_alpha + run.n_particles * config.sigma.n_data_samples / 2.0
     beta_post = sigma_prior_beta + raw_misfits_total
     sigma_sq = beta_post / (alpha_post - 1.0)
     run.current_sigma = float(np.sqrt(sigma_sq))
@@ -355,7 +355,7 @@ def update(
     gradient_fn : callable
         Computes gradients of the negative log-probability. Accepts particles
         of shape ``(n_particles, n_dims)`` and returns gradients of the same
-        shape. When ``config.data_sigma`` is set or ``config.estimate_sigma``
+        shape. When ``config.sigma.value`` is set or ``config.sigma.estimate``
         is ``True``, must return ``(gradients, misfits)`` where misfits has
         shape ``(n_particles,)``.
     config : SVGDConfig or None
@@ -376,7 +376,7 @@ def update(
         config = SVGDConfig()
 
     kernel_fn = _resolve_kernel_fn(config.kernel)
-    needs_misfits = config.data_sigma is not None or config.estimate_sigma
+    needs_misfits = config.sigma.value is not None or config.sigma.estimate
     step_schedule = _resolve_step_schedule(config.step_schedule, config.preconditioner)
     use_lbfgs = config.preconditioner == "lbfgs"
 
@@ -433,7 +433,7 @@ def update(
                 run.particles = np.clip(run.particles, config.bounds[0], config.bounds[1])
 
             if anim is not None:
-                draw_frame(anim, run.particles, config.dimensions_to_plot)
+                draw_frame(anim, run.particles, config.animation.dimensions_to_plot)
 
     except KeyboardInterrupt:
         pass

@@ -3,7 +3,7 @@
 import numpy as np
 
 import simplesvgd
-from simplesvgd import SVGDConfig
+from simplesvgd import LBFGSConfig, SigmaConfig, SVGDConfig
 
 
 def _gaussian_grad(x, mean=0.0, var=1.0):
@@ -34,7 +34,7 @@ class TestLBFGSPreconditioner:
                 n_iter=500,
                 stepsize=0.1,
                 preconditioner="lbfgs",
-                lbfgs_history=10,
+                lbfgs=LBFGSConfig(history=10),
                 disable_progressbar=True,
             ),
         )
@@ -84,10 +84,7 @@ class TestHierarchicalSigma:
             SVGDConfig(
                 n_iter=100,
                 stepsize=0.3,
-                data_sigma=2.0,
-                estimate_sigma=True,
-                sigma_prior_alpha=2.0,
-                n_data_samples=1,
+                sigma=SigmaConfig(value=2.0, estimate=True, prior_alpha=2.0, n_data_samples=1),
                 disable_progressbar=True,
             ),
         )
@@ -105,10 +102,7 @@ class TestHierarchicalSigma:
             SVGDConfig(
                 n_iter=50,
                 stepsize=0.3,
-                data_sigma=1.0,
-                estimate_sigma=True,
-                sigma_prior_alpha=2.0,
-                n_data_samples=1,
+                sigma=SigmaConfig(value=1.0, estimate=True, prior_alpha=2.0, n_data_samples=1),
                 disable_progressbar=True,
             ),
         )

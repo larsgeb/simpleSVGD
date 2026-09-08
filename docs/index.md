@@ -129,9 +129,13 @@ final_samples = state.particles
 `simplesvgd.update()` takes every tuning knob through a single
 [`SVGDConfig`][simplesvgd.SVGDConfig] object rather than a long argument
 list -- construct one with just the fields you need, the rest keep their
-defaults. It returns an [`SVGDState`][simplesvgd.SVGDState], not a raw
-array -- `.particles` holds the current particle positions, and the state
-can be passed back in via `SVGDConfig(resume_from=...)` to continue a run.
+defaults. Related tunables are grouped into sub-objects --
+[`LBFGSConfig`][simplesvgd.LBFGSConfig], [`SigmaConfig`][simplesvgd.SigmaConfig],
+[`AnimationConfig`][simplesvgd.AnimationConfig] -- constructed the same way,
+e.g. `SVGDConfig(sigma=SigmaConfig(value=0.1, estimate=True))`. It returns an
+[`SVGDState`][simplesvgd.SVGDState], not a raw array -- `.particles` holds
+the current particle positions, and the state can be passed back in via
+`SVGDConfig(resume_from=...)` to continue a run.
 
 AdaGrad's internal parameters (momentum, fudge factor) aren't
 user-configurable; use `step_schedule="constant"` or

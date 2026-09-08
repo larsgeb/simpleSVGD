@@ -13,7 +13,7 @@ from .lbfgs import LBFGSState
 class SVGDState(Generic[FloatDType]):
     """Complete state of an SVGD run.
 
-    This object is returned by :func:`simpleSVGD.update` and can be passed
+    This object is returned by :func:`simplesvgd.update` and can be passed
     back via the ``resume_from`` parameter to continue optimization.
 
     Attributes:

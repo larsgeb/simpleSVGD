@@ -18,15 +18,15 @@ class LBFGSState(Generic[FloatDType]):
     """Circular buffer storing L-BFGS curvature pairs (s, y).
 
     Attributes:
-        S: Array of shape (m, n) storing s_k = x_{k+1} - x_k vectors.
-        Y: Array of shape (m, n) storing y_k = g_{k+1} - g_k vectors.
+        s_history: Array of shape (m, n) storing s_k = x_{k+1} - x_k vectors.
+        y_history: Array of shape (m, n) storing y_k = g_{k+1} - g_k vectors.
         cursor: Index where the next pair will be written.
         count: Number of pairs stored so far (up to m).
 
     """
 
-    S: npt.NDArray[FloatDType]
-    Y: npt.NDArray[FloatDType]
+    s_history: npt.NDArray[FloatDType]
+    y_history: npt.NDArray[FloatDType]
     cursor: int = 0
     count: int = 0
 
@@ -48,8 +48,8 @@ def make_lbfgs_state(
     dtype. Defaults to float64 when omitted.
     """
     return LBFGSState(
-        S=np.zeros((m, n), dtype=dtype),
-        Y=np.zeros((m, n), dtype=dtype),
+        s_history=np.zeros((m, n), dtype=dtype),
+        y_history=np.zeros((m, n), dtype=dtype),
         cursor=0,
         count=0,
     )
@@ -65,10 +65,10 @@ def lbfgs_update(
     ys = float(np.dot(s, y))
     if ys <= 0:
         return
-    m = state.S.shape[0]
+    m = state.s_history.shape[0]
     idx = state.cursor % m
-    state.S[idx] = s
-    state.Y[idx] = y
+    state.s_history[idx] = s
+    state.y_history[idx] = y
     state.cursor = (idx + 1) % m
     state.count = min(state.count + 1, m)
 
@@ -85,7 +85,7 @@ def lbfgs_direction(
     if k == 0:
         return -grad.copy()
 
-    m = state.S.shape[0]
+    m = state.s_history.shape[0]
     # Indices from newest to oldest
     indices = [(state.cursor - 1 - i) % m for i in range(k)]
 
@@ -99,8 +99,8 @@ def lbfgs_direction(
 
     # Forward pass (newest to oldest)
     for j, idx in enumerate(indices):
-        s_j = state.S[idx]
-        y_j = state.Y[idx]
+        s_j = state.s_history[idx]
+        y_j = state.y_history[idx]
         rho_j = 1.0 / np.dot(y_j, s_j)
         rhos[j] = rho_j
         alpha_j = rho_j * np.dot(s_j, q)
@@ -109,16 +109,16 @@ def lbfgs_direction(
 
     # Initial Hessian scaling: H0 = (y_k . s_k) / (y_k . y_k) * I
     newest = indices[0]
-    s_newest = state.S[newest]
-    y_newest = state.Y[newest]
+    s_newest = state.s_history[newest]
+    y_newest = state.y_history[newest]
     gamma = np.dot(y_newest, s_newest) / np.dot(y_newest, y_newest)
     r = gamma * q
 
     # Backward pass (oldest to newest)
     for j in reversed(range(k)):
         idx = indices[j]
-        y_j = state.Y[idx]
+        y_j = state.y_history[idx]
         beta = rhos[j] * np.dot(y_j, r)
-        r = r + (alphas[j] - beta) * state.S[idx]
+        r = r + (alphas[j] - beta) * state.s_history[idx]
 
     return -r

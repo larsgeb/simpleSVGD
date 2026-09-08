@@ -2,7 +2,7 @@
 
 import numpy as np
 
-import simpleSVGD
+import simplesvgd
 
 
 class Test1DGaussian:
@@ -20,7 +20,7 @@ class Test1DGaussian:
     def test_mean_and_std(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 3, (200, 1))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=500, stepsize=0.5, disable_progressbar=True
         )
         p = state.particles
@@ -42,7 +42,7 @@ class Test2DIsotropicGaussian:
     def test_mean_and_cov(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 3, (300, 2))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=800, stepsize=0.3, disable_progressbar=True
         )
         p = state.particles
@@ -69,7 +69,7 @@ class Test2DAnisotropicGaussian:
     def test_mean_and_cov(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 3, (500, 2))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
         )
         p = state.particles
@@ -99,7 +99,7 @@ class TestBananaDistribution:
     def test_marginal_x1(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 2, (500, 2))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=2000, stepsize=0.1, disable_progressbar=True
         )
         p = state.particles
@@ -110,7 +110,7 @@ class TestBananaDistribution:
     def test_conditional_structure(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 2, (500, 2))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=2000, stepsize=0.1, disable_progressbar=True
         )
         p = state.particles
@@ -135,7 +135,7 @@ class TestHighDimensionalGaussian:
     def test_normalized_kernel_maintains_spread(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 1, (30, self.d))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=200, stepsize=0.3,
             kernel="rbf_normalized", disable_progressbar=True,
         )
@@ -156,7 +156,7 @@ class TestHighDimensionalGaussian:
         """Standard RBF kernel loses repulsion in high dimensions."""
         np.random.seed(42)
         x0 = np.random.normal(0, 1, (30, self.d))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=200, stepsize=0.3,
             kernel="rbf", disable_progressbar=True,
         )
@@ -167,7 +167,7 @@ class TestHighDimensionalGaussian:
         # Now run with normalized kernel
         np.random.seed(42)
         x0 = np.random.normal(0, 1, (30, self.d))
-        state_norm = simpleSVGD.update(
+        state_norm = simplesvgd.update(
             x0, self.grad_fn, n_iter=200, stepsize=0.3,
             kernel="rbf_normalized", disable_progressbar=True,
         )
@@ -208,7 +208,7 @@ class TestGaussianMixture:
     def test_bimodality(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 4, (500, 2))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
         )
         p = state.particles
@@ -220,7 +220,7 @@ class TestGaussianMixture:
     def test_mode_locations(self):
         np.random.seed(42)
         x0 = np.random.normal(0, 4, (500, 2))
-        state = simpleSVGD.update(
+        state = simplesvgd.update(
             x0, self.grad_fn, n_iter=1500, stepsize=0.3, disable_progressbar=True
         )
         p = state.particles

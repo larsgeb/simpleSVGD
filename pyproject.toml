@@ -46,7 +46,6 @@ src = ["src"]
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "C901", "PLR0912", "PLR0913", "PLR0915", "PLR0917",  # update()'s many independent knobs; revisited when it moves to a config object
     "COM812",   # conflicts with the formatter; this project doesn't run one
     "CPY001",   # per-file copyright headers are redundant with LICENSE for a project this size
     "D203", "D213",  # conflict with D211/D212 (the ones we actually use); listed explicitly to silence ruff's own warning about the conflict

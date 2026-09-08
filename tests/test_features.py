@@ -1,8 +1,9 @@
-"""Feature-specific tests: preconditioning, sigma, bounds, resume, callback, backward compat."""
+"""Feature-specific tests: preconditioning, sigma, bounds, resume, callback, config defaults."""
 
 import numpy as np
 
 import simplesvgd
+from simplesvgd import SVGDConfig
 
 
 def _gaussian_grad(x, mean=0.0, var=1.0):
@@ -27,8 +28,15 @@ class TestLBFGSPreconditioner:
         x0 = rng.normal(0, 5, (200, 2))
         initial_error = np.linalg.norm(np.mean(x0, axis=0) - self.true_mean)
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=500, stepsize=0.1,
-            preconditioner="lbfgs", lbfgs_history=10, disable_progressbar=True
+            x0,
+            self.grad_fn,
+            SVGDConfig(
+                n_iter=500,
+                stepsize=0.1,
+                preconditioner="lbfgs",
+                lbfgs_history=10,
+                disable_progressbar=True,
+            ),
         )
         p = state.particles
         final_error = np.linalg.norm(np.mean(p, axis=0) - self.true_mean)
@@ -41,8 +49,9 @@ class TestLBFGSPreconditioner:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 3, (10, 2))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=20, stepsize=0.05,
-            preconditioner="lbfgs", disable_progressbar=True
+            x0,
+            self.grad_fn,
+            SVGDConfig(n_iter=20, stepsize=0.05, preconditioner="lbfgs", disable_progressbar=True),
         )
         assert state.lbfgs_states is not None
         assert len(state.lbfgs_states) == 10
@@ -70,10 +79,17 @@ class TestHierarchicalSigma:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 1, (50, 1))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=100, stepsize=0.3,
-            data_sigma=2.0, estimate_sigma=True,
-            sigma_prior_alpha=2.0, n_data_samples=1,
-            disable_progressbar=True
+            x0,
+            self.grad_fn,
+            SVGDConfig(
+                n_iter=100,
+                stepsize=0.3,
+                data_sigma=2.0,
+                estimate_sigma=True,
+                sigma_prior_alpha=2.0,
+                n_data_samples=1,
+                disable_progressbar=True,
+            ),
         )
         assert len(state.sigma_history) == 100
         # Sigma should have changed from initial value
@@ -84,10 +100,17 @@ class TestHierarchicalSigma:
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 1, (20, 1))
         state = simplesvgd.update(
-            x0, self.grad_fn, n_iter=50, stepsize=0.3,
-            data_sigma=1.0, estimate_sigma=True,
-            sigma_prior_alpha=2.0, n_data_samples=1,
-            disable_progressbar=True
+            x0,
+            self.grad_fn,
+            SVGDConfig(
+                n_iter=50,
+                stepsize=0.3,
+                data_sigma=1.0,
+                estimate_sigma=True,
+                sigma_prior_alpha=2.0,
+                n_data_samples=1,
+                disable_progressbar=True,
+            ),
         )
         assert len(state.misfit_history) == 50
         assert len(state.particle_misfit_history) == 50
@@ -105,8 +128,9 @@ class TestBoundsEnforcement:
             return x - 5.0  # pushes toward 5.0
 
         state = simplesvgd.update(
-            x0, grad_fn, n_iter=100, stepsize=0.5,
-            bounds=(-1.0, 1.0), disable_progressbar=True
+            x0,
+            grad_fn,
+            SVGDConfig(n_iter=100, stepsize=0.5, bounds=(-1.0, 1.0), disable_progressbar=True),
         )
         assert np.all(state.particles >= -1.0)
         assert np.all(state.particles <= 1.0)
@@ -122,13 +146,14 @@ class TestResume:
             return (x - 3.0) / 4.0
 
         state1 = simplesvgd.update(
-            x0, grad_fn, n_iter=200, stepsize=0.5, disable_progressbar=True
+            x0, grad_fn, SVGDConfig(n_iter=200, stepsize=0.5, disable_progressbar=True)
         )
         assert state1.iteration == 200
 
         state2 = simplesvgd.update(
-            x0, grad_fn, n_iter=200, stepsize=0.5,
-            resume_from=state1, disable_progressbar=True
+            x0,
+            grad_fn,
+            SVGDConfig(n_iter=200, stepsize=0.5, resume_from=state1, disable_progressbar=True),
         )
         assert state2.iteration == 400
         # Resumed run should have better or equal convergence
@@ -143,12 +168,20 @@ class TestResume:
             return x
 
         state1 = simplesvgd.update(
-            x0, grad_fn, n_iter=50, stepsize=0.05,
-            preconditioner="lbfgs", disable_progressbar=True
+            x0,
+            grad_fn,
+            SVGDConfig(n_iter=50, stepsize=0.05, preconditioner="lbfgs", disable_progressbar=True),
         )
         state2 = simplesvgd.update(
-            x0, grad_fn, n_iter=50, stepsize=0.05,
-            preconditioner="lbfgs", resume_from=state1, disable_progressbar=True
+            x0,
+            grad_fn,
+            SVGDConfig(
+                n_iter=50,
+                stepsize=0.05,
+                preconditioner="lbfgs",
+                resume_from=state1,
+                disable_progressbar=True,
+            ),
         )
         assert state2.iteration == 100
         assert state2.lbfgs_states is not None
@@ -165,8 +198,9 @@ class TestCallback:
             iterations_seen.append(iteration)
 
         simplesvgd.update(
-            x0, lambda x: x, n_iter=10, stepsize=0.1,
-            callback=my_callback, disable_progressbar=True
+            x0,
+            lambda x: x,
+            SVGDConfig(n_iter=10, stepsize=0.1, callback=my_callback, disable_progressbar=True),
         )
         assert iterations_seen == list(range(10))
 
@@ -179,35 +213,33 @@ class TestCallback:
             states_seen.append(state)
 
         simplesvgd.update(
-            x0, lambda x: x, n_iter=5, stepsize=0.1,
-            callback=my_callback, disable_progressbar=True
+            x0,
+            lambda x: x,
+            SVGDConfig(n_iter=5, stepsize=0.1, callback=my_callback, disable_progressbar=True),
         )
         assert len(states_seen) == 5
         assert states_seen[0].particles.shape == (20, 2)
 
 
-class TestBackwardCompat:
-    """Old-style positional call should still work."""
+class TestConfigDefaults:
+    """A default-constructed SVGDConfig should reproduce update()'s old no-kwargs behavior."""
 
-    def test_positional_args(self):
+    def test_default_config_runs(self):
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 3, (100, 2))
 
         def grad_fn(x):
             return x
 
-        # Old API: update(x0, gradient_fn, n_iter, stepsize)
-        # New API uses keyword-only after gradient_fn, but we still support positional
-        # for x0 and gradient_fn
-        state = simplesvgd.update(x0, grad_fn, n_iter=50, stepsize=0.3,
-                                  disable_progressbar=True)
+        state = simplesvgd.update(
+            x0, grad_fn, SVGDConfig(n_iter=50, stepsize=0.3, disable_progressbar=True)
+        )
         assert state.particles.shape == (100, 2)
 
-    def test_returns_svgd_state(self):
+    def test_omitted_config_uses_defaults(self):
         rng = np.random.default_rng(42)
         x0 = rng.normal(0, 1, (10, 1))
-        result = simplesvgd.update(x0, lambda x: x, n_iter=5, stepsize=0.1,
-                                   disable_progressbar=True)
+        result = simplesvgd.update(x0, lambda x: x, SVGDConfig(n_iter=5, disable_progressbar=True))
         assert isinstance(result, simplesvgd.SVGDState)
         assert hasattr(result, "particles")
 
@@ -222,8 +254,11 @@ class TestRobbinsMonroSchedule:
             return (x - 2.0)
 
         state = simplesvgd.update(
-            x0, grad_fn, n_iter=200, stepsize=1.0,
-            step_schedule="robbins-monro", disable_progressbar=True
+            x0,
+            grad_fn,
+            SVGDConfig(
+                n_iter=200, stepsize=1.0, step_schedule="robbins-monro", disable_progressbar=True
+            ),
         )
         # Should converge to mean ~2
         assert abs(np.mean(state.particles) - 2.0) < 1.0
@@ -241,7 +276,10 @@ class TestConstantSchedule:
             return x
 
         state = simplesvgd.update(
-            x0, grad_fn, n_iter=100, stepsize=0.01,
-            step_schedule="constant", disable_progressbar=True
+            x0,
+            grad_fn,
+            SVGDConfig(
+                n_iter=100, stepsize=0.01, step_schedule="constant", disable_progressbar=True
+            ),
         )
         assert abs(np.mean(state.particles)) < 0.5

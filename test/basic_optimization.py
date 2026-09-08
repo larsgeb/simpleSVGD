@@ -64,7 +64,6 @@ initial_samples = rng.normal(0, 3, [1000, 2])
 state = simplesvgd.update(
     initial_samples,
     himmelblau_grad,
-    n_iter=130,
-    stepsize=1e0,
+    simplesvgd.SVGDConfig(n_iter=130, stepsize=1e0),
 )
 final_samples = state.particles

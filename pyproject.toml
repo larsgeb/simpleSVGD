@@ -31,9 +31,11 @@ viz = ["matplotlib"]
 
 [dependency-groups]
 dev = ["pytest", "ruff", "ty"]
+docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
 
 [project.urls]
 Homepage = "https://github.com/larsgeb/simpleSVGD"
+Documentation = "https://larsgeb.github.io/simpleSVGD/"
 Issues = "https://github.com/larsgeb/simpleSVGD/issues"
 
 [tool.hatch.build.targets.wheel]

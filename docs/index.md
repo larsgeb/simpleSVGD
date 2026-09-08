@@ -144,7 +144,10 @@ See the [API reference](api.md) for the full set of `SVGDConfig` fields,
 including L-BFGS preconditioning, hierarchical sigma estimation, bounds,
 callbacks, and the legacy live-scatter animation.
 
-For a runnable, interactive version of this tutorial, see the
+This tutorial is also available as a rendered notebook under
+[Notebooks](notebooks/Tutorial%20on%20using%20simplesvgd.ipynb), alongside a
+second notebook demonstrating the [PyTorch bridge](notebooks/Using%20SVGD%20+%20Torch%20algorithms.ipynb).
+For a runnable, interactive version, see the
 [notebook on GitHub](https://github.com/larsgeb/simpleSVGD/blob/master/notebooks/Tutorial%20on%20using%20simplesvgd.ipynb)
 or open it directly in [Binder](https://mybinder.org/v2/gh/larsgeb/simpleSVGD/HEAD?labpath=%2Fnotebooks%2FTutorial%20on%20using%20simplesvgd.ipynb).
 

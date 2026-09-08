@@ -7,6 +7,9 @@ edit_uri: edit/master/docs/
 
 nav:
   - Home: index.md
+  - Notebooks:
+      - Tutorial: notebooks/Tutorial on using simplesvgd.ipynb
+      - PyTorch bridge: notebooks/Using SVGD + Torch algorithms.ipynb
   - API Reference: api.md
 
 theme:
@@ -40,6 +43,9 @@ markdown_extensions:
 
 plugins:
   - search
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
   - mkdocstrings:
       handlers:
         python:

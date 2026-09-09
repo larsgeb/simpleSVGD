@@ -37,6 +37,8 @@ class _RunState(Generic[FloatDType]):
     sigma_history: list[float]
     misfit_history: list[float]
     particle_misfit_history: list[list[float]]
+    particle_variance_history: list[float]
+    repulsion_ratio_history: list[float]
     prev_particles: npt.NDArray[FloatDType] | None
     prev_grads: npt.NDArray[FloatDType] | None
     lbfgs_states: list[LBFGSState[FloatDType]] | None
@@ -118,6 +120,8 @@ def _init_run_state(
             sigma_history=[],
             misfit_history=[],
             particle_misfit_history=[],
+            particle_variance_history=[],
+            repulsion_ratio_history=[],
             prev_particles=None,
             prev_grads=None,
             lbfgs_states=lbfgs_states,
@@ -153,6 +157,8 @@ def _init_run_state(
         sigma_history=list(resume_from.sigma_history),
         misfit_history=list(resume_from.misfit_history),
         particle_misfit_history=list(resume_from.particle_misfit_history),
+        particle_variance_history=list(resume_from.particle_variance_history),
+        repulsion_ratio_history=list(resume_from.repulsion_ratio_history),
         prev_particles=(
             resume_from.prev_particles.copy() if resume_from.prev_particles is not None else None
         ),
@@ -290,6 +296,27 @@ def _record_sigma_history(run: _RunState[FloatDType]) -> None:
         run.sigma_history.append(run.current_sigma)
 
 
+def _record_particle_variance(run: _RunState[FloatDType]) -> None:
+    # Trace of the empirical covariance (sum of per-dimension variances) --
+    # O(n*d), negligible next to the O(n^2*d) kernel evaluation. A cheap,
+    # always-available (no gradient_fn cooperation needed) spread diagnostic.
+    run.particle_variance_history.append(float(np.sum(np.var(run.particles, axis=0))))
+
+
+def _record_repulsion_ratio(
+    run: _RunState[FloatDType],
+    kernel_grad: npt.NDArray[FloatDType],
+    attractive: npt.NDArray[FloatDType],
+) -> None:
+    # Both arrays are already computed for the displacement itself -- this is
+    # just two norms, not a new O(n^2*d)-scale computation. A small epsilon
+    # avoids a raw division by zero when the attractive term vanishes (e.g.
+    # gradient_fn returns exactly 0), rather than raising or producing inf.
+    repulsion_norm = float(np.linalg.norm(kernel_grad))
+    attractive_norm = float(np.linalg.norm(attractive))
+    run.repulsion_ratio_history.append(repulsion_norm / (attractive_norm + 1e-12))
+
+
 def _scale_grads_by_sigma(
     precond_grads: npt.NDArray[FloatDType], current_sigma: float | None, temperature: float
 ) -> npt.NDArray[FloatDType]:
@@ -336,6 +363,8 @@ def _snapshot(run: _RunState[FloatDType], iteration: int) -> SVGDState[FloatDTyp
         sigma_history=list(run.sigma_history),
         misfit_history=list(run.misfit_history),
         particle_misfit_history=list(run.particle_misfit_history),
+        particle_variance_history=list(run.particle_variance_history),
+        repulsion_ratio_history=list(run.repulsion_ratio_history),
         prev_particles=run.prev_particles,
         prev_grads=run.prev_grads,
     )
@@ -393,7 +422,7 @@ def _compute_displacement(
     raise ValueError(f"Unknown step_schedule: {step_schedule!r}")
 
 
-def update(
+def update(  # noqa: PLR0915 -- single orchestration point for the whole run loop; splitting it further would scatter closely-coupled loop state across more helper signatures than it'd save in readability
     x0: npt.NDArray[FloatDType],
     gradient_fn: "GradientFn[FloatDType] | MinibatchGradientFn[FloatDType]",
     config: SVGDConfig[FloatDType] | None = None,
@@ -471,6 +500,7 @@ def update(
             mean_misfit = _record_misfits(run, misfits)
             _update_sigma(run, config, misfits, sigma_prior_beta)
             _record_sigma_history(run)
+            _record_particle_variance(run)
 
             _report_progress(outer, mean_misfit, run.current_sigma)
 
@@ -489,6 +519,7 @@ def update(
             #   phi = -(K @ grads_scaled - nabla_K) / n_particles
             attractive = np.matmul(kernel_matrix, grads_scaled)
             phi = -(attractive - kernel_grad) / run.n_particles
+            _record_repulsion_ratio(run, kernel_grad, attractive)
 
             inputs = _StepInputs(
                 kernel_matrix=kernel_matrix,
@@ -522,6 +553,8 @@ def update(
         sigma_history=run.sigma_history,
         misfit_history=run.misfit_history,
         particle_misfit_history=run.particle_misfit_history,
+        particle_variance_history=run.particle_variance_history,
+        repulsion_ratio_history=run.repulsion_ratio_history,
         prev_particles=run.prev_particles if use_lbfgs else None,
         prev_grads=run.prev_grads if use_lbfgs else None,
     )

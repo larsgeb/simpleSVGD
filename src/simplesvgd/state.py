@@ -25,6 +25,27 @@ class SVGDState(Generic[FloatDType]):
         sigma_history: ``data_sigma`` at each iteration.
         misfit_history: Mean misfit across particles at each iteration.
         particle_misfit_history: Per-particle misfits at each iteration.
+        particle_variance_history: Total particle-ensemble variance (trace of
+            the empirical covariance, i.e. sum of per-dimension variances) at
+            each iteration -- a cheap proxy for ensemble spread. A value that
+            shrinks steadily over the run, well below what the target
+            distribution's actual variance should be, is a variance-collapse
+            warning sign (see Ba et al., "Understanding the Variance Collapse
+            of SVGD in High Dimensions", ICLR 2022).
+        repulsion_ratio_history: Ratio of the repulsive kernel-gradient term's
+            norm to the attractive term's norm, at each iteration a
+            displacement is computed (shorter than the other histories -- the
+            final iteration of any given ``update()`` call only records
+            state, it doesn't step, so each ``resume_from`` boundary drops
+            one more entry than the other histories accumulate). Read
+            this early in a run, not as a monotonic trend over the whole
+            run -- the attractive term shrinks toward zero near any converged
+            mode regardless of collapse, which swamps the ratio's trend late
+            in a run. A ratio far below 1 in the first few iterations (while
+            particles are still diffuse and attraction hasn't decayed yet) is
+            the direct, cheap signature of the collapse mechanism in the
+            paper above: repulsion already overwhelmed by attraction before
+            it's had any chance to spread the ensemble out.
         prev_particles: Previous particle positions (for deferred L-BFGS update).
         prev_grads: Previous gradients (for deferred L-BFGS update).
 
@@ -38,5 +59,7 @@ class SVGDState(Generic[FloatDType]):
     sigma_history: list[float] = field(default_factory=list)
     misfit_history: list[float] = field(default_factory=list)
     particle_misfit_history: list[list[float]] = field(default_factory=list)
+    particle_variance_history: list[float] = field(default_factory=list)
+    repulsion_ratio_history: list[float] = field(default_factory=list)
     prev_particles: npt.NDArray[FloatDType] | None = None
     prev_grads: npt.NDArray[FloatDType] | None = None

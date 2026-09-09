@@ -162,6 +162,44 @@ similar to this:
 https://user-images.githubusercontent.com/21038893/151603377-a473e7b1-f7b4-417b-a685-9c0cfa98dc15.mov
 
 
+## Diagnosing variance collapse
+
+SVGD's particles can silently collapse onto a subset of the target's modes,
+underestimating posterior variance -- a well-documented failure mode,
+especially in high dimensions (see Ba et al., ["Understanding the Variance
+Collapse of SVGD in High Dimensions"](https://openreview.net/forum?id=Qycd9j5Qp9J),
+ICLR 2022). `SVGDState` tracks two cheap per-iteration diagnostics to help
+catch this without needing an independent reference (e.g. a long MCMC run):
+
+- `particle_variance_history`: total ensemble variance (trace of the
+  empirical covariance) at each iteration. A value that ends up far below
+  where the ensemble started -- and far below what the target's own variance
+  should plausibly be -- is the direct symptom of collapse.
+- `repulsion_ratio_history`: the norm ratio of SVGD's repulsive (kernel
+  gradient) term to its attractive term, recorded at each iteration a
+  displacement is computed. Read this **early in a run**, not as a trend
+  across the whole run -- the attractive term naturally decays toward zero
+  near any converged mode, collapsed or not, which swamps the ratio's trend
+  late on. A ratio far below 1 in the first few iterations, while particles
+  are still diffuse, means repulsion is already overwhelmed by attraction
+  before it's had any chance to spread the ensemble out -- the direct
+  mechanism behind collapse described in the paper above.
+
+```python
+state = simplesvgd.update(initial_samples, grad_fn, simplesvgd.SVGDConfig(n_iter=200))
+
+var_ratio = state.particle_variance_history[-1] / state.particle_variance_history[0]
+early_repulsion = np.mean(state.repulsion_ratio_history[:5])
+if var_ratio < 0.1 or early_repulsion < 0.05:
+    print("Warning: this run may have variance-collapsed.")
+```
+
+If you see this, consider `kernel="rbf_normalized"` (per-dimension
+normalized RBF, recommended above ~100 dimensions) or a
+`temperature_schedule` (anneals the likelihood in gradually, giving
+repulsion time to spread particles out before the full posterior sharpens
+around a mode).
+
 
 # The origins of SVGD
 SVGD is a general purpose variational inference algorithm that forms a natural

@@ -193,7 +193,8 @@ class SVGDConfig(Generic[FloatDType]):
         Called as ``callback(iteration, state)`` after each gradient
         evaluation.
     disable_progressbar : bool
-        Suppress the tqdm progress bar.
+        Suppress the live progress display (bar, ETA, and a live
+        misfit/sigma/particle-variance/repulsion-ratio stats line).
     resume_from : SVGDState or None
         Resume from a previous run's state. When set, the run continues from
         ``resume_from.particles`` rather than ``x0``.

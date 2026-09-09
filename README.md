@@ -166,7 +166,10 @@ https://user-images.githubusercontent.com/21038893/151603377-a473e7b1-f7b4-417b-
 
 See it in action first: [a live, embedded demo](https://larsgeb.github.io/simpleSVGD/live-demo/)
 runs a real Himmelblau-function example and lets you scrub through it right
-in the browser, no install required.
+in the browser, no install required. There are also [three more demos
+comparing advanced features](https://larsgeb.github.io/simpleSVGD/advanced-demos/)
+(annealing, L-BFGS preconditioning, and variance-collapse diagnostics) side
+by side against their simpler baselines.
 
 For 2-D problems, `RerunConfig` gives a much more useful live view than the
 legacy matplotlib animation above: it logs particle positions and the run's

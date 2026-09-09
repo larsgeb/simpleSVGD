@@ -8,7 +8,7 @@ same viewer you'd get locally with `RerunConfig(enabled=True)`.
 300 particles start from a diffuse Gaussian and are pushed by SVGD towards
 the four modes of the Himmelblau function (the same test function used in
 the [mini-tutorial](index.md#defining-an-example-target)). Drag the
-timeline at the bottom to scrub through the 150 iterations; the particle
+timeline at the bottom to scrub through the 300 iterations; the particle
 cloud and the two diagnostic traces (`particle_variance`,
 `repulsion_ratio`) stay in sync.
 

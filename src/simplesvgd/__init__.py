@@ -15,7 +15,7 @@ import tqdm.auto as tqdm_auto
 
 from ._animation import draw_frame, setup_animation
 from ._typing import Background, FloatDType
-from .config import AnimationConfig, LBFGSConfig, SigmaConfig, SVGDConfig
+from .config import AnimationConfig, LBFGSConfig, RerunConfig, SigmaConfig, SVGDConfig
 from .kernels import make_mass_weighted_kernel, rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
@@ -30,6 +30,7 @@ __all__ = [
     "AnimationConfig",
     "LBFGSConfig",
     "LBFGSState",
+    "RerunConfig",
     "SVGDConfig",
     "SVGDState",
     "SigmaConfig",

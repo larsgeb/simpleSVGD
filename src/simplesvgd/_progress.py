@@ -12,6 +12,8 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from ._stats import RunStats
+
 
 def make_progress(*, disable: bool, console: Console | None = None) -> Progress:
     """Build the live SVGD progress bar.
@@ -38,26 +40,14 @@ def make_progress(*, disable: bool, console: Console | None = None) -> Progress:
     )
 
 
-def format_stats(
-    mean_misfit: float | None,
-    current_sigma: float | None,
-    particle_variance: float,
-    repulsion_ratio: float | None,
-) -> str:
-    """Render one line of live run stats: misfit, sigma, particle variance, repulsion ratio.
-
-    ``mean_misfit``/``current_sigma`` are omitted when the run doesn't track
-    them (no ``sigma`` config). ``repulsion_ratio`` is the previous
-    iteration's value -- this iteration's hasn't been computed yet when the
-    progress bar updates -- and is omitted on the very first iteration, before
-    any displacement has been taken.
-    """
+def format_stats(stats: RunStats) -> str:
+    """Render one line of live run stats: misfit, sigma, particle variance, repulsion ratio."""
     parts = []
-    if mean_misfit is not None:
-        parts.append(f"misfit={mean_misfit:.3e}")
-    if current_sigma is not None:
-        parts.append(f"sigma={current_sigma:.2e}")
-    parts.append(f"var={particle_variance:.3e}")
-    if repulsion_ratio is not None:
-        parts.append(f"rep={repulsion_ratio:.2f}")
+    if stats.mean_misfit is not None:
+        parts.append(f"misfit={stats.mean_misfit:.3e}")
+    if stats.current_sigma is not None:
+        parts.append(f"sigma={stats.current_sigma:.2e}")
+    parts.append(f"var={stats.particle_variance:.3e}")
+    if stats.repulsion_ratio is not None:
+        parts.append(f"rep={stats.repulsion_ratio:.2f}")
     return "  " + "  ".join(parts) if parts else ""

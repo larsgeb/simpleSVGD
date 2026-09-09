@@ -81,6 +81,42 @@ class AnimationConfig(Generic[FloatDType]):
 
 
 @dataclass
+class RerunConfig(Generic[FloatDType]):
+    """Live particle + diagnostics visualization via the Rerun viewer.
+
+    Unlike ``AnimationConfig``'s static matplotlib scatter, this logs
+    particle positions and the run's scalar diagnostics (misfit, sigma,
+    particle variance, repulsion ratio) to a Rerun timeline every iteration,
+    so you can scrub back and forth through the whole run and correlate
+    particle motion with the diagnostics -- built for understanding how the
+    algorithm's knobs (stepsize, kernel, annealing schedule, ...) shape a
+    run, not just inspecting its final state. Contour/background overlays
+    (``AnimationConfig.background``) aren't supported by this path.
+
+    Attributes
+    ----------
+    enabled : bool
+        Turn on Rerun logging.
+    dimensions_to_plot : list[int]
+        Which two particle dimensions to log as a 2D point cloud.
+    spawn : bool
+        Spawn a Rerun Viewer process and stream to it. If ``False``, data is
+        buffered in the recording without opening a viewer (e.g. for
+        ``rr.save()``'d inspection later, or in a headless environment).
+    application_id : str
+        Rerun application id -- groups recordings of the same kind of run in
+        the viewer. Each ``update()`` call gets its own recording within it
+        (see ``setup_rerun``).
+
+    """
+
+    enabled: bool = False
+    dimensions_to_plot: list[int] = field(default_factory=lambda: [0, 1])
+    spawn: bool = True
+    application_id: str = "simplesvgd"
+
+
+@dataclass
 class SVGDConfig(Generic[FloatDType]):
     """Every tunable of :func:`update`, grouped into one object.
 
@@ -164,6 +200,9 @@ class SVGDConfig(Generic[FloatDType]):
         ``resume_from.particles`` rather than ``x0``.
     animation : AnimationConfig
         Legacy live-scatter animation parameters.
+    rerun : RerunConfig
+        Live particle + diagnostics visualization via the Rerun viewer,
+        with a scrubbable timeline (see ``RerunConfig``).
 
     """
 
@@ -182,3 +221,4 @@ class SVGDConfig(Generic[FloatDType]):
     disable_progressbar: bool = False
     resume_from: SVGDState[FloatDType] | None = None
     animation: "AnimationConfig[FloatDType]" = field(default_factory=AnimationConfig)
+    rerun: "RerunConfig[FloatDType]" = field(default_factory=RerunConfig)

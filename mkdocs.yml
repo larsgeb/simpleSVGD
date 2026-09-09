@@ -5,8 +5,14 @@ repo_name: larsgeb/simpleSVGD
 repo_url: https://github.com/larsgeb/simpleSVGD
 edit_uri: edit/master/docs/
 
+# generate_demo.py is a plain script, not a notebook -- keep mkdocs-jupyter
+# from picking it up as one.
+exclude_docs: |
+  assets/rerun/generate_demo.py
+
 nav:
   - Home: index.md
+  - Live demo: live-demo.md
   - Notebooks:
       - Tutorial: notebooks/Tutorial on using simplesvgd.ipynb
       - PyTorch bridge: notebooks/Using SVGD + Torch algorithms.ipynb

@@ -29,6 +29,12 @@ This page documents `simplesvgd`'s public API -- everything listed in
 
 ::: simplesvgd.lbfgs_update
 
+## Mean-field SVN preconditioning
+
+::: simplesvgd.SVNConfig
+
+::: simplesvgd.svn_direction
+
 ## Utilities
 
 ::: simplesvgd.gradient_vectorizer

@@ -15,10 +15,11 @@ import tqdm.auto as tqdm_auto
 
 from ._animation import draw_frame, setup_animation
 from ._typing import Background, FloatDType
-from .config import AnimationConfig, LBFGSConfig, RerunConfig, SigmaConfig, SVGDConfig
+from .config import AnimationConfig, LBFGSConfig, RerunConfig, SigmaConfig, SVGDConfig, SVNConfig
 from .kernels import make_mass_weighted_kernel, rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
+from .svn import svn_direction
 from .update import update
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ __all__ = [
     "RerunConfig",
     "SVGDConfig",
     "SVGDState",
+    "SVNConfig",
     "SigmaConfig",
     "gradient_vectorizer",
     "lbfgs_direction",
@@ -40,6 +42,7 @@ __all__ = [
     "make_lbfgs_state",
     "make_mass_weighted_kernel",
     "rbf_kernel_normalized",
+    "svn_direction",
     "update",
     "update_torch",
 ]

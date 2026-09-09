@@ -16,6 +16,15 @@ from _logging import make_logger
 import simplesvgd
 
 
+# step_schedule="robbins-monro" (rather than the "adagrad" default) so the
+# per-iteration step actually decays instead of staying ~stepsize forever --
+# see generate_demo.py for why "adagrad" alone makes both the particle
+# positions and particle_variance itself oscillate in a fixed back-and-forth
+# for the whole run, at any stepsize. The d=500 collapse this demo exists to
+# show is unaffected either way -- particle_variance crashes from ~490 to
+# ~3-5 within the first 20 iterations under both schedules -- but only
+# robbins-monro lets that collapsed (or, at d=2, healthy) state actually
+# settle down instead of jittering indefinitely once reached.
 def _run(d, prefix):
     true_mean = np.zeros(d)
 
@@ -29,7 +38,8 @@ def _run(d, prefix):
         grad_fn,
         simplesvgd.SVGDConfig(
             n_iter=200,
-            stepsize=0.3,
+            stepsize=1.0,
+            step_schedule="robbins-monro",
             disable_progressbar=True,
             callback=make_logger(prefix),
         ),

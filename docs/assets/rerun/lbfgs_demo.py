@@ -36,6 +36,15 @@ n_iter = 250
 # within the first ~20 iterations.
 stepsize = 2.0
 
+# Neither run below overrides step_schedule -- both use whatever this
+# library defaults to for their preconditioner (see _resolve_step_schedule
+# in update.py): "adagrad" for the plain run, "robbins-monro" for the
+# lbfgs one. That's not incidental to the contrast, it's most of it:
+# "adagrad" never decays (each particle keeps taking a step of magnitude
+# ~stepsize every iteration, forever, regardless of proximity to the
+# target -- verified via per-iteration displacement staying ~2.0, unchanged
+# from iteration 100 to 250), while "robbins-monro"'s extra 1/sqrt(iteration)
+# factor lets lbfgs's step genuinely shrink and settle within ~20 iterations.
 rr.init("lbfgs-demo", recording_id="lbfgs-demo", spawn=False)
 
 simplesvgd.update(

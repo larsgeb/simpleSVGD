@@ -10,13 +10,22 @@ two of them -- see
 [`_logging.py`](https://github.com/larsgeb/simpleSVGD/blob/master/docs/assets/rerun/_logging.py)
 for the ~15-line helper this relies on, which you can reuse directly.
 
-Every scenario below was checked numerically, not just by eye, for the one
-failure mode that's easy to introduce by picking too large a `stepsize`:
-particles that never settle and instead keep jumping by an amount
-comparable to the whole cloud's spread, on every iteration, forever. Watch
-for it yourself if you build on these -- symptom is a per-iteration particle
-displacement (in steady state, once the run has had time to converge) that
-doesn't shrink relative to the cloud's own spread.
+Every scenario below was checked numerically, not just by eye, for a failure
+mode that's easy to miss: with `step_schedule="adagrad"` (the library
+default), the per-coordinate normalization divides the gradient by an
+estimate of its own recent magnitude, so every particle keeps taking a step
+of magnitude ~`stepsize` on *every single iteration, forever* -- lowering
+`stepsize` only shrinks that step, it never makes it decay over the course
+of a run. In practice this doesn't look like noise, it settles into an exact
+back-and-forth: a diagnostic like `particle_variance` ends up alternating
+between two fixed values every iteration, indefinitely. `step_schedule=
+"robbins-monro"` divides by an additional, growing `sqrt(1 + iteration)`
+factor, so the step genuinely shrinks as the run progresses -- every demo
+below other than the AdaGrad side of the L-BFGS comparison (where that
+non-decaying behavior is exactly what's being contrasted against) uses it
+for this reason. If you're building your own recording, check whether your
+diagnostics keep changing indefinitely instead of settling down; if so this
+is almost certainly why.
 
 ## Annealing / tempering
 
@@ -80,9 +89,9 @@ identical isotropic-Gaussian-target runs are shown at `d=2` (well-behaved)
 and `d=500` (collapses) -- same scenario as
 [`tests/test_diagnostics.py`](https://github.com/larsgeb/simpleSVGD/blob/master/tests/test_diagnostics.py)'s
 `TestVarianceCollapseDiagnosticsFlagCollapse`. Watch `particle_variance` in
-the `high_d` diagnostics: it spikes, then collapses to near zero within
-about 20 iterations and stays there, while `low_d`'s keeps oscillating in a
-healthy range for the whole run.
+the `high_d` diagnostics: it crashes from its initial value towards zero
+within about 20 iterations and settles there, while `low_d`'s rises and
+settles at a healthy, clearly nonzero plateau instead.
 
 <iframe
     src="https://app.rerun.io/version/0.37.1?url=https://larsgeb.github.io/simpleSVGD/assets/rerun/variance_collapse_demo.rrd"

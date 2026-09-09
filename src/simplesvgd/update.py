@@ -10,7 +10,7 @@ import numpy.typing as npt
 import tqdm.auto as tqdm_auto
 
 from ._animation import Animation, draw_frame, setup_animation
-from ._typing import FloatDType, GradientFn, KernelFn
+from ._typing import BatchIndices, FloatDType, GradientFn, KernelFn, MinibatchGradientFn
 from .config import SVGDConfig
 from .kernels import rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
@@ -193,15 +193,19 @@ def _setup_animation(
 
 
 def _evaluate_gradients(
-    gradient_fn: GradientFn[FloatDType],
+    gradient_fn: "GradientFn[FloatDType] | MinibatchGradientFn[FloatDType]",
     particles: npt.NDArray[FloatDType],
     *,
     needs_misfits: bool,
+    batch_indices: BatchIndices | None,
 ) -> tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType] | None]:
-    # gradient_fn's actual return shape depends on needs_misfits, a runtime
-    # value the type system can't narrow -- re-asserted via cast() rather
-    # than weakening the signature to Any.
-    result = gradient_fn(particles)
+    # gradient_fn's actual arity/return shape depends on batch_indices and
+    # needs_misfits, runtime values the type system can't narrow --
+    # re-asserted via cast() rather than weakening the signature to Any.
+    if batch_indices is not None:
+        result = cast("MinibatchGradientFn[FloatDType]", gradient_fn)(particles, batch_indices)
+    else:
+        result = cast("GradientFn[FloatDType]", gradient_fn)(particles)
     misfits: npt.NDArray[FloatDType] | None
     if needs_misfits:
         all_grads, misfits = cast(
@@ -217,6 +221,27 @@ def _evaluate_gradients(
     # the whole particle array on the first `particles + displacement` below.
     all_grads = np.asarray(all_grads, dtype=particles.dtype)
     return all_grads, misfits
+
+
+def _rescale_for_minibatch(
+    all_grads: npt.NDArray[FloatDType],
+    misfits: npt.NDArray[FloatDType] | None,
+    batch_indices: BatchIndices | None,
+    n_data_samples: int | None,
+) -> tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType] | None]:
+    if batch_indices is None:
+        return all_grads, misfits
+    assert n_data_samples is not None  # noqa: S101 -- checked before the loop starts
+    # Unbiased estimate of the full-dataset sum from a subsampled sum, so
+    # downstream code (attractive term, L-BFGS curvature, sigma estimation)
+    # sees quantities of the same scale as a full-batch evaluation would
+    # have produced.
+    scale = n_data_samples / len(batch_indices)
+    scaled_grads = cast("npt.NDArray[FloatDType]", all_grads * scale)
+    scaled_misfits = (
+        cast("npt.NDArray[FloatDType]", misfits * scale) if misfits is not None else None
+    )
+    return scaled_grads, scaled_misfits
 
 
 def _lbfgs_curvature_update(
@@ -370,7 +395,7 @@ def _compute_displacement(
 
 def update(
     x0: npt.NDArray[FloatDType],
-    gradient_fn: GradientFn[FloatDType],
+    gradient_fn: "GradientFn[FloatDType] | MinibatchGradientFn[FloatDType]",
     config: SVGDConfig[FloatDType] | None = None,
 ) -> SVGDState[FloatDType]:
     """Update a collection of samples using Stein Variational Gradient Descent.
@@ -391,7 +416,9 @@ def update(
         of shape ``(n_particles, n_dims)`` and returns gradients of the same
         shape. When ``config.sigma.value`` is set or ``config.sigma.estimate``
         is ``True``, must return ``(gradients, misfits)`` where misfits has
-        shape ``(n_particles,)``.
+        shape ``(n_particles,)``. When ``config.minibatch_sampler`` is set,
+        called instead as ``gradient_fn(particles, batch_indices)`` -- see
+        :class:`SVGDConfig`.
     config : SVGDConfig or None
         Every other tunable of the run (iteration count, step size,
         preconditioner, kernel, bounds, callback, resume, animation, ...).
@@ -408,6 +435,8 @@ def update(
         raise ValueError("x0 and gradient_fn cannot be None!")
     if config is None:
         config = SVGDConfig()
+    if config.minibatch_sampler is not None and config.sigma.n_data_samples is None:
+        raise ValueError("n_data_samples is required when minibatch_sampler is set")
 
     kernel_fn = _resolve_kernel_fn(config.kernel)
     needs_misfits = config.sigma.value is not None or config.sigma.estimate
@@ -426,8 +455,16 @@ def update(
         for loop_iter in outer:
             iteration = run.start_iter + loop_iter
 
+            batch_indices = (
+                config.minibatch_sampler(iteration)
+                if config.minibatch_sampler is not None
+                else None
+            )
             all_grads, misfits = _evaluate_gradients(
-                gradient_fn, run.particles, needs_misfits=needs_misfits
+                gradient_fn, run.particles, needs_misfits=needs_misfits, batch_indices=batch_indices
+            )
+            all_grads, misfits = _rescale_for_minibatch(
+                all_grads, misfits, batch_indices, config.sigma.n_data_samples
             )
             _lbfgs_curvature_update(run, all_grads, use_lbfgs=use_lbfgs)
 

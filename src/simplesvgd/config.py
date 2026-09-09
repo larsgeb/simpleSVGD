@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generic
 
-from ._typing import Background, FloatDType, KernelFn
+from ._typing import Background, BatchIndices, FloatDType, KernelFn
 from .state import SVGDState
 
 if TYPE_CHECKING:
@@ -127,6 +127,20 @@ class SVGDConfig(Generic[FloatDType]):
         ``(0, 1]``.
     sigma : SigmaConfig
         Hierarchical likelihood-noise estimation parameters.
+    minibatch_sampler : callable or None
+        Called as ``minibatch_sampler(iteration)``, returning an array of
+        indices into the data dimension (e.g. sources/receivers) to use for
+        that iteration. When set, ``gradient_fn`` is called as
+        ``gradient_fn(particles, batch_indices)`` instead of
+        ``gradient_fn(particles)``, and must accept that second argument.
+        The returned gradients (and misfits, if ``sigma.value`` is set or
+        ``sigma.estimate`` is ``True``) are treated as sums over just the
+        sampled subset and rescaled by ``sigma.n_data_samples /
+        len(batch_indices)`` -- an unbiased estimate of the full-dataset sum
+        -- before use, so the SVGD attractive term and the hierarchical
+        sigma estimate stay calibrated as if the full dataset had been
+        evaluated. Requires ``sigma.n_data_samples`` to be set. ``None``
+        (default) evaluates the full dataset every iteration, unchanged.
     kernel : str, KernelFn, or None
         Kernel type. ``None`` or ``"rbf"`` for standard RBF.
         ``"rbf_normalized"`` for per-dimension normalized RBF, recommended
@@ -155,6 +169,7 @@ class SVGDConfig(Generic[FloatDType]):
     step_schedule: str | None = None
     temperature_schedule: "str | Callable[[int], float] | None" = None
     sigma: SigmaConfig = field(default_factory=SigmaConfig)
+    minibatch_sampler: Callable[[int], BatchIndices] | None = None
     kernel: "str | KernelFn[FloatDType] | None" = None
     bounds: tuple[float, float] | None = None
     callback: Callable[[int, SVGDState[FloatDType]], None] | None = None

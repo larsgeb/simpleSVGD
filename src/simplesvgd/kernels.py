@@ -1,9 +1,11 @@
-"""RBF kernels (standard and per-dimension normalized) used by update()."""
+"""RBF kernels (standard, per-dimension normalized, and mass-weighted) used by update()."""
+
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from ._typing import FloatDType
+from ._typing import FloatDType, KernelFn
 
 # Below this, particles are treated as coincident/constant: further division
 # by bandwidth or per-dimension std risks blowing up to inf/nan for no
@@ -110,3 +112,70 @@ def rbf_kernel_normalized(
     kernel_grad = kernel_grad_normalized / std
 
     return (kernel_matrix, kernel_grad)
+
+
+def make_mass_weighted_kernel(weights: npt.NDArray[np.floating[Any]]) -> "KernelFn[FloatDType]":
+    """Build a discretization-invariant RBF kernel weighted by ``weights``.
+
+    For particles representing a field discretized on a mesh or grid (e.g. a
+    velocity/density model in FWI), the plain Euclidean RBF kernel implicitly
+    treats every nodal degree of freedom as equally important -- refining the
+    mesh adds more (correlated) coordinates to the same distance computation,
+    changing the effective repulsion per physical degree of freedom purely as
+    an artifact of resolution.
+
+    This kernel instead measures distance in the mass-weighted inner product
+    ``<a, b>_M = sum_i weights[i] * a[i] * b[i]``, i.e. ``h(x, y)^2 = (x-y)^T
+    diag(weights) (x-y)``. Passing cell volumes (or quadrature weights) as
+    ``weights`` makes this inner product a Riemann-sum approximation of the
+    continuum L2 inner product, so it (and the resulting SVGD dynamics)
+    converges to a fixed, resolution-independent quantity as the mesh is
+    refined, rather than growing with the number of nodes. ``weights=1``
+    everywhere recovers the plain :func:`rbf_kernel`.
+
+    Parameters
+    ----------
+    weights : np.ndarray
+        Per-dimension weights (e.g. mesh cell volumes), shape ``(n_dims,)``.
+        Must be non-negative.
+
+    Returns
+    -------
+    callable
+        A kernel function usable as ``SVGDConfig(kernel=...)``.
+
+    """
+    weights = np.asarray(weights)
+
+    def mass_weighted_kernel(
+        particles: npt.NDArray[FloatDType], h: float = -1
+    ) -> tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]]:
+        w = weights.astype(particles.dtype)
+        sqrt_w = np.sqrt(w)
+        particles_scaled = particles * sqrt_w
+        pairwise_dists = _pairwise_sq_dists(particles_scaled)
+        bandwidth: FloatDType | float
+        if h < 0:
+            bandwidth = np.median(pairwise_dists)
+            bandwidth = np.sqrt(0.5 * bandwidth / np.log(particles.shape[0] + 1))
+            bandwidth = particles.dtype.type(bandwidth)
+        else:
+            bandwidth = h
+
+        if bandwidth < _DEGENERATE_SCALE_THRESHOLD:
+            n = particles.shape[0]
+            return np.ones((n, n), dtype=particles.dtype), np.zeros_like(particles)
+
+        kernel_matrix = np.exp(-pairwise_dists / bandwidth ** 2 / 2)
+
+        # Same combination as rbf_kernel's un-weighted gradient, then mapped
+        # through M=diag(weights): d/dx_i k(x_i,x_j) picks up a factor of
+        # weights (the M-quadratic form's gradient is M(x-y), not (x-y)).
+        kernel_grad = -np.matmul(kernel_matrix, particles)
+        kernel_row_sums = np.sum(kernel_matrix, axis=1)
+        for i in range(particles.shape[1]):
+            kernel_grad[:, i] = kernel_grad[:, i] + np.multiply(particles[:, i], kernel_row_sums)
+        kernel_grad = kernel_grad * w / (bandwidth ** 2)
+        return (kernel_matrix, kernel_grad)
+
+    return mass_weighted_kernel

@@ -145,7 +145,12 @@ class SVGDConfig(Generic[FloatDType]):
         Kernel type. ``None`` or ``"rbf"`` for standard RBF.
         ``"rbf_normalized"`` for per-dimension normalized RBF, recommended
         for high-dimensional parameter spaces (d > ~100) where standard RBF
-        repulsion vanishes. Can also be a custom ``KernelFn``.
+        repulsion vanishes. Can also be a custom ``KernelFn``, e.g. one built
+        with ``make_mass_weighted_kernel(weights)`` for particles
+        representing a field discretized on a mesh or grid -- weighting
+        distances by cell volume/quadrature weight keeps the kernel (and the
+        resulting posterior statistics) stable as the mesh is refined,
+        unlike plain Euclidean RBF.
     bounds : tuple[float, float] or None
         ``(lower, upper)`` bounds for particle clipping.
     callback : callable or None

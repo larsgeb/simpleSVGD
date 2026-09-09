@@ -62,6 +62,8 @@ class TestVarianceCollapseDiagnosticsFlagCollapse:
     """
 
     def test_particle_variance_collapses_in_high_dimensions(self):
+        var_ratios_low = []
+        var_ratios_high = []
         for seed in range(6):
             state_low = _run(d=2, seed=seed)
             state_high = _run(d=500, seed=seed)
@@ -72,21 +74,33 @@ class TestVarianceCollapseDiagnosticsFlagCollapse:
             var_ratio_high = state_high.particle_variance_history[-1] / (
                 state_high.particle_variance_history[0]
             )
+            var_ratios_low.append(var_ratio_low)
+            var_ratios_high.append(var_ratio_high)
 
-            # Low-d: variance stays within a factor of ~1.5 of its start
-            # (the target's own per-dim variance is 1, matching the initial
-            # spread, so it neither collapses nor blows up).
-            assert 0.5 < var_ratio_low < 1.5, (
+            # Per-seed bounds are deliberately loose: BLAS matmul reduction
+            # order differs across machines (thread count, CPU), and 200
+            # iterations of these nonlinear particle dynamics compound that
+            # tiny per-step difference chaotically -- observed up to ~35%
+            # relative drift for the same seed between two otherwise-
+            # identical numpy/Python environments. A real regression (e.g.
+            # low-d collapsing, or high-d failing to collapse) blows well
+            # past these.
+            assert 0.25 < var_ratio_low < 2.0, (
                 f"seed={seed}: expected the low-d run to keep its variance, got "
                 f"ratio={var_ratio_low:.3f}"
             )
-            # High-d: variance collapses to a small fraction of its start
-            # (empirically <0.03 across seeds, with a lot of margin below
-            # the low-d floor of 0.5 used above).
-            assert var_ratio_high < 0.1, (
+            assert var_ratio_high < 0.15, (
                 f"seed={seed}: expected the high-d run to variance-collapse, got "
                 f"ratio={var_ratio_high:.4f}"
             )
+
+        # The mean across seeds is far more robust to per-seed floating-point
+        # chaos than any single trajectory -- the underlying signal (low-d
+        # preserves variance, high-d collapses it) is stable in aggregate
+        # even when individual seeds drift under different BLAS reduction
+        # orders.
+        assert np.mean(var_ratios_low) > 0.6
+        assert np.mean(var_ratios_high) < 0.05
 
     def test_repulsion_ratio_flags_collapse_early_in_the_run(self):
         """Early in the run (before the attractive term has decayed toward

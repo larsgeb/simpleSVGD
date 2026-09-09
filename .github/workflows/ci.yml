@@ -52,3 +52,16 @@ jobs:
           python-version: "3.11"
       - run: uv sync --group dev --extra torch --extra viz --python "3.11"
       - run: uv run --python "3.11" pytest tests/test_torch.py
+
+  pytest-rerun:
+    # Separate, single-version job: rerun-sdk is a heavy (~150MB) optional
+    # dependency and this only exercises the rerun logging path -- not worth
+    # adding to every leg of the main matrix.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev --extra rerun --extra viz --python "3.11"
+      - run: uv run --python "3.11" pytest tests/test_rerun.py

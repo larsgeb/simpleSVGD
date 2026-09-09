@@ -7,9 +7,12 @@ from typing import Generic, cast
 
 import numpy as np
 import numpy.typing as npt
-import tqdm.auto as tqdm_auto
+from rich.progress import Progress, TaskID
 
 from ._animation import Animation, draw_frame, setup_animation
+from ._progress import format_stats, make_progress
+from ._rerun_viz import RerunSession, maybe_log_iteration, setup_rerun
+from ._stats import RunStats
 from ._typing import BatchIndices, FloatDType, GradientFn, KernelFn, MinibatchGradientFn
 from .config import SVGDConfig
 from .kernels import rbf_kernel, rbf_kernel_normalized
@@ -198,6 +201,16 @@ def _setup_animation(
     )
 
 
+def _setup_rerun(config: SVGDConfig[FloatDType]) -> RerunSession[FloatDType] | None:
+    if not config.rerun.enabled:
+        return None
+    return setup_rerun(
+        application_id=config.rerun.application_id,
+        spawn=config.rerun.spawn,
+        dimensions_to_plot=config.rerun.dimensions_to_plot,
+    )
+
+
 def _evaluate_gradients(
     gradient_fn: "GradientFn[FloatDType] | MinibatchGradientFn[FloatDType]",
     particles: npt.NDArray[FloatDType],
@@ -341,16 +354,8 @@ def _store_lbfgs_prev(
     run.prev_grads = all_grads.copy()
 
 
-def _report_progress(
-    outer: tqdm_auto.tqdm, mean_misfit: float | None, current_sigma: float | None
-) -> None:
-    postfix = {}
-    if mean_misfit is not None:
-        postfix["misfit"] = f"{mean_misfit:.4e}"
-    if current_sigma is not None:
-        postfix["sigma"] = f"{current_sigma:.2e}"
-    if postfix:
-        outer.set_postfix(**postfix)
+def _report_progress(progress: Progress, task_id: TaskID, stats: RunStats) -> None:
+    progress.update(task_id, advance=1, stats=format_stats(stats))
 
 
 def _snapshot(run: _RunState[FloatDType], iteration: int) -> SVGDState[FloatDType]:
@@ -476,12 +481,13 @@ def update(  # noqa: PLR0915 -- single orchestration point for the whole run loo
     run = _init_run_state(x0, config, use_lbfgs=use_lbfgs, step_schedule=step_schedule)
     sigma_prior_beta = _resolve_sigma_prior_beta(config, run.current_sigma)
     anim = _setup_animation(config, run.particles)
+    rerun_session = _setup_rerun(config)
 
-    outer = tqdm_auto.trange(
-        config.n_iter, desc="SVGD", unit="iter", disable=config.disable_progressbar
-    )
+    progress = make_progress(disable=config.disable_progressbar)
+    task_id = progress.add_task("SVGD", total=config.n_iter, stats="")
+    progress.start()
     try:
-        for loop_iter in outer:
+        for loop_iter in range(config.n_iter):
             iteration = run.start_iter + loop_iter
 
             batch_indices = (
@@ -502,7 +508,20 @@ def update(  # noqa: PLR0915 -- single orchestration point for the whole run loo
             _record_sigma_history(run)
             _record_particle_variance(run)
 
-            _report_progress(outer, mean_misfit, run.current_sigma)
+            # This iteration's repulsion ratio hasn't been computed yet at
+            # this point in the loop (it's derived from the displacement
+            # step, further down) -- stats.repulsion_ratio is the previous
+            # iteration's value, one iteration stale.
+            stats = RunStats(
+                mean_misfit=mean_misfit,
+                current_sigma=run.current_sigma,
+                particle_variance=run.particle_variance_history[-1],
+                repulsion_ratio=(
+                    run.repulsion_ratio_history[-1] if run.repulsion_ratio_history else None
+                ),
+            )
+            _report_progress(progress, task_id, stats)
+            maybe_log_iteration(rerun_session, iteration, run.particles, stats)
 
             if config.callback is not None:
                 config.callback(iteration, _snapshot(run, iteration))
@@ -542,7 +561,7 @@ def update(  # noqa: PLR0915 -- single orchestration point for the whole run loo
     except KeyboardInterrupt:
         pass
     finally:
-        outer.close()
+        progress.stop()
 
     return SVGDState(
         particles=run.particles,

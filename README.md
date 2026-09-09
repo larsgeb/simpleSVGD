@@ -162,6 +162,41 @@ similar to this:
 https://user-images.githubusercontent.com/21038893/151603377-a473e7b1-f7b4-417b-a685-9c0cfa98dc15.mov
 
 
+## Live visualization with Rerun
+
+For 2-D problems, `RerunConfig` gives a much more useful live view than the
+legacy matplotlib animation above: it logs particle positions and the run's
+scalar diagnostics (misfit, sigma, `particle_variance_history`,
+`repulsion_ratio_history`) to a [Rerun](https://rerun.io) recording every
+iteration, opening a viewer with a scrubbable timeline -- pause, rewind, and
+step through a run to see exactly how a knob (stepsize, kernel, annealing
+schedule, ...) shaped its behavior, with the particle cloud and the
+diagnostics plots moving in sync. Requires the `rerun` extra
+(`pip install simplesvgd[rerun]`, a ~150MB dependency, hence optional):
+
+```python
+state = simplesvgd.update(
+    initial_samples,
+    Himmelblau_grad,
+    simplesvgd.SVGDConfig(
+        n_iter=200,
+        stepsize=0.1,
+        rerun=simplesvgd.RerunConfig(enabled=True),
+    ),
+)
+```
+
+This spawns a Rerun Viewer window by default (`RerunConfig(spawn=False)` to
+just buffer the recording instead, e.g. for `rerun.save()`-ing it to inspect
+later). Each `update()` call opens its own recording, so comparing two
+configs in the same notebook session doesn't overlay them onto one
+timeline; a `resume_from` continuation currently starts a fresh recording
+too rather than stitching onto the original run's. `dimensions_to_plot`
+picks which two particle dimensions to log (default `[0, 1]`), same
+convention as `AnimationConfig`; unlike `AnimationConfig`, background
+contour overlays aren't supported by this path.
+
+
 ## Diagnosing variance collapse
 
 SVGD's particles can silently collapse onto a subset of the target's modes,

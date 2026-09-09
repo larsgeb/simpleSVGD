@@ -22,12 +22,14 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=2.2",
+    "rich",
     "tqdm",
 ]
 
 [project.optional-dependencies]
 torch = ["torch"]
 viz = ["matplotlib"]
+rerun = ["rerun-sdk"]
 
 [dependency-groups]
 dev = ["pytest", "ruff", "ty"]

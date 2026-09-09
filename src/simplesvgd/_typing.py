@@ -26,4 +26,9 @@ GradientFn = Callable[
     [npt.NDArray[FloatDType]],
     npt.NDArray[FloatDType] | tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
 ]
+BatchIndices = npt.NDArray[np.integer[Any]]
+MinibatchGradientFn = Callable[
+    [npt.NDArray[FloatDType], BatchIndices],
+    npt.NDArray[FloatDType] | tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
+]
 Background = tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType], npt.NDArray[FloatDType]]

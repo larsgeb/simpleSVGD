@@ -52,8 +52,9 @@ packages = ["src/simplesvgd"]
 line-length = 100
 src = ["src"]
 # docs/notebooks/** are symlinks to notebooks/** (for mkdocs-jupyter); skip
-# linting them a second time under their docs-site path.
-extend-exclude = ["docs/notebooks"]
+# linting them a second time under their docs-site path. docs/assets/** are
+# one-off scripts that generate committed demo assets, not library code.
+extend-exclude = ["docs/notebooks", "docs/assets"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -70,3 +71,9 @@ ignore = [
 "tests/**" = ["S101", "ANN", "D", "PLR2004"]
 "test/**" = ["S101", "ANN", "D", "PLR2004"]
 "notebooks/**" = ["S101", "ANN", "D", "PLR2004"]
+
+[tool.ty.src]
+# docs/assets/** are one-off scripts that generate committed demo assets,
+# not library code -- and CI's ty job doesn't install the rerun extra
+# generate_demo.py needs.
+exclude = ["docs/assets"]

@@ -70,7 +70,9 @@ initial_samples = rng.normal(mean, standard_dev, [n_samples, dimensions])
 
 ### Defining an example target
 
-A good 2-dimensional test function is the Himmelblau function:
+A good 2-dimensional test function is the Himmelblau function -- see the
+[live demo](live-demo.md) for a real run on it, scrubbable right in the
+browser:
 
 ```python
 def himmelblau(input_array: np.ndarray) -> np.ndarray:

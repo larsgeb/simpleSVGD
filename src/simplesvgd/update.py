@@ -1,6 +1,7 @@
 """Core SVGD update function with optional preconditioning and hierarchical sigma."""
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, cast
 
@@ -19,6 +20,11 @@ from .state import SVGDState
 # implementation details of the legacy default preconditioner, not knobs.
 _ADAGRAD_ALPHA = 0.9
 _ADAGRAD_FUDGE = 1e-6
+
+# Starting temperature for the "linear"/"geometric" annealing schedules --
+# an implementation detail of those two named presets, not a knob (a
+# user-supplied callable can start wherever it likes).
+_TEMPERATURE_FLOOR = 0.01
 
 
 @dataclass
@@ -63,6 +69,27 @@ def _resolve_step_schedule(step_schedule: str | None, preconditioner: str | None
     if step_schedule is not None:
         return step_schedule
     return "robbins-monro" if preconditioner == "lbfgs" else "adagrad"
+
+
+def _resolve_temperature_fn(
+    temperature_schedule: "str | Callable[[int], float] | None", n_iter: int
+) -> Callable[[int], float]:
+    if temperature_schedule is None:
+        return lambda _iteration: 1.0
+    if not isinstance(temperature_schedule, str):
+        return temperature_schedule
+
+    # n_iter == 1 has no "over the run" to ramp across; jump straight to 1.0.
+    last_iter = max(n_iter - 1, 1)
+    if temperature_schedule == "linear":
+        return lambda iteration: min(
+            1.0, _TEMPERATURE_FLOOR + (1.0 - _TEMPERATURE_FLOOR) * iteration / last_iter
+        )
+    if temperature_schedule == "geometric":
+        return lambda iteration: min(
+            1.0, _TEMPERATURE_FLOOR * (1.0 / _TEMPERATURE_FLOOR) ** (iteration / last_iter)
+        )
+    raise ValueError(f"Unknown temperature_schedule: {temperature_schedule!r}")
 
 
 def _init_run_state(
@@ -239,11 +266,18 @@ def _record_sigma_history(run: _RunState[FloatDType]) -> None:
 
 
 def _scale_grads_by_sigma(
-    precond_grads: npt.NDArray[FloatDType], current_sigma: float | None
+    precond_grads: npt.NDArray[FloatDType], current_sigma: float | None, temperature: float
 ) -> npt.NDArray[FloatDType]:
+    # scalar * NDArray[FloatDType] loses the TypeVar binding in numpy's
+    # stubs (same rough edge as the .min()/.max() cases elsewhere).
+    scaled = (
+        cast("npt.NDArray[FloatDType]", precond_grads * temperature)
+        if temperature != 1.0
+        else precond_grads
+    )
     if current_sigma is None:
-        return precond_grads
-    return cast("npt.NDArray[FloatDType]", precond_grads / (current_sigma**2))
+        return scaled
+    return cast("npt.NDArray[FloatDType]", scaled / (current_sigma**2))
 
 
 def _store_lbfgs_prev(
@@ -378,6 +412,7 @@ def update(
     kernel_fn = _resolve_kernel_fn(config.kernel)
     needs_misfits = config.sigma.value is not None or config.sigma.estimate
     step_schedule = _resolve_step_schedule(config.step_schedule, config.preconditioner)
+    temperature_fn = _resolve_temperature_fn(config.temperature_schedule, config.n_iter)
     use_lbfgs = config.preconditioner == "lbfgs"
 
     run = _init_run_state(x0, config, use_lbfgs=use_lbfgs, step_schedule=step_schedule)
@@ -411,7 +446,8 @@ def update(
 
             precond_grads = _precondition_gradients(run, all_grads, use_lbfgs=use_lbfgs)
             kernel_matrix, kernel_grad = kernel_fn(run.particles, config.bandwidth)
-            grads_scaled = _scale_grads_by_sigma(precond_grads, run.current_sigma)
+            temperature = temperature_fn(iteration)
+            grads_scaled = _scale_grads_by_sigma(precond_grads, run.current_sigma, temperature)
             # SVGD update direction:
             #   phi = -(K @ grads_scaled - nabla_K) / n_particles
             attractive = np.matmul(kernel_matrix, grads_scaled)

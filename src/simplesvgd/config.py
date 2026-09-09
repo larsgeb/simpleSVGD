@@ -110,6 +110,21 @@ class SVGDConfig(Generic[FloatDType]):
         ``None``, Robbins-Monro for ``"lbfgs"``). ``"robbins-monro"`` uses
         ``stepsize / (|attractive|_max * sqrt(1+t))``. ``"constant"`` uses
         fixed ``stepsize``. ``"adagrad"`` uses AdaGrad+momentum.
+    temperature_schedule : str, callable, or None
+        Anneals the data-misfit gradient contribution: the (preconditioned,
+        sigma-scaled) gradient is multiplied by a temperature in ``(0, 1]``
+        before the SVGD attractive term is formed, so a temperature below 1
+        reads as an inflated apparent noise level. Useful when the posterior
+        is sharply peaked relative to the initial particle spread (e.g.
+        full-waveform-inversion-style problems), where applying the full
+        likelihood from iteration 0 risks collapsing particles onto a subset
+        of modes before repulsion has had a chance to spread them out.
+        ``None`` applies temperature 1.0 throughout (current behavior,
+        unchanged). ``"linear"`` ramps linearly from a small floor to 1.0
+        over the run. ``"geometric"`` ramps geometrically (log-linear) from
+        the same floor to 1.0. A callable is called as
+        ``temperature_schedule(iteration)`` and must return a float in
+        ``(0, 1]``.
     sigma : SigmaConfig
         Hierarchical likelihood-noise estimation parameters.
     kernel : str, KernelFn, or None
@@ -138,6 +153,7 @@ class SVGDConfig(Generic[FloatDType]):
     preconditioner: str | None = None
     lbfgs: LBFGSConfig = field(default_factory=LBFGSConfig)
     step_schedule: str | None = None
+    temperature_schedule: "str | Callable[[int], float] | None" = None
     sigma: SigmaConfig = field(default_factory=SigmaConfig)
     kernel: "str | KernelFn[FloatDType] | None" = None
     bounds: tuple[float, float] | None = None

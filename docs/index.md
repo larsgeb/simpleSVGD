@@ -72,7 +72,8 @@ initial_samples = rng.normal(mean, standard_dev, [n_samples, dimensions])
 
 A good 2-dimensional test function is the Himmelblau function -- see the
 [live demo](live-demo.md) for a real run on it, scrubbable right in the
-browser:
+browser (there are also [three advanced demos](advanced-demos.md) showing
+annealing, L-BFGS preconditioning, and variance-collapse diagnostics):
 
 ```python
 def himmelblau(input_array: np.ndarray) -> np.ndarray:

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://larsgeb.github.io/simpleSVGD/</loc>
+         <lastmod>2026-09-10</lastmod>
+    </url>
+    <url>
+         <loc>https://larsgeb.github.io/simpleSVGD/advanced-demos/</loc>
+         <lastmod>2026-09-10</lastmod>
+    </url>
+    <url>
+         <loc>https://larsgeb.github.io/simpleSVGD/api/</loc>
+         <lastmod>2026-09-10</lastmod>
+    </url>
+    <url>
+         <loc>https://larsgeb.github.io/simpleSVGD/live-demo/</loc>
+         <lastmod>2026-09-10</lastmod>
+    </url>
+    <url>
+         <loc>https://larsgeb.github.io/simpleSVGD/notebooks/Tutorial%20on%20using%20simplesvgd/</loc>
+         <lastmod>2026-09-10</lastmod>
+    </url>
+    <url>
+         <loc>https://larsgeb.github.io/simpleSVGD/notebooks/Using%20SVGD%20%2B%20Torch%20algorithms/</loc>
+         <lastmod>2026-09-10</lastmod>
+    </url>
+</urlset>

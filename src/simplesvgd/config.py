@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generic
 
-from ._typing import Background, BatchIndices, FloatDType, KernelFn
+from ._typing import Background, BatchIndices, FloatDType, HessianVectorProductFn, KernelFn
 from .state import SVGDState
 
 if TYPE_CHECKING:
@@ -25,6 +25,32 @@ class LBFGSConfig:
     """
 
     history: int = 10
+
+
+@dataclass
+class SVNConfig:
+    """Mean-field Stein Variational Newton preconditioning parameters.
+
+    Only used when ``SVGDConfig.preconditioner == "svn"``, which also
+    requires ``SVGDConfig.hessian_vector_product`` to be set. See
+    :mod:`simplesvgd.svn` for what "mean-field" means here and how it
+    differs from the full Stein Variational Newton algorithm.
+
+    Attributes
+    ----------
+    cg_iters : int
+        Conjugate-gradient iterations used to solve each iteration's shared
+        Newton system.
+    damping : float
+        Tikhonov damping added to the shared curvature operator before
+        solving, so it stays positive-definite (and the CG solve
+        well-posed) even when ``hessian_vector_product`` returns a
+        rank-deficient or near-singular Hessian-vector product.
+
+    """
+
+    cg_iters: int = 10
+    damping: float = 1e-6
 
 
 @dataclass
@@ -138,14 +164,36 @@ class SVGDConfig(Generic[FloatDType]):
         RBF kernel bandwidth. ``-1`` for automatic (median heuristic).
     preconditioner : str or None
         ``None`` for AdaGrad+momentum (legacy). ``"lbfgs"`` for per-particle
-        L-BFGS preconditioning with Robbins-Monro step decay.
+        L-BFGS preconditioning with Robbins-Monro step decay. ``"svn"`` for
+        mean-field Stein Variational Newton preconditioning (requires
+        ``hessian_vector_product``; see :mod:`simplesvgd.svn`) -- unlike
+        ``"lbfgs"``, which preconditions each particle's raw gradient before
+        kernel combination, this Newton-preconditions the full, already
+        kernel-combined SVGD direction using one shared curvature operator
+        for all particles.
     lbfgs : LBFGSConfig
         L-BFGS preconditioning parameters (only used for ``"lbfgs"``).
+    svn : SVNConfig
+        Mean-field SVN preconditioning parameters (only used for ``"svn"``).
+    hessian_vector_product : callable or None
+        Computes a Hessian-vector product, called as
+        ``hessian_vector_product(particles, vectors)`` with both arguments
+        of shape ``(n_particles, n_dims)``, returning an array of the same
+        shape (row *i* is the Hessian-vector product at ``particles[i]``
+        applied to ``vectors[i]``). Required when ``preconditioner ==
+        "svn"``; ignored otherwise.
     step_schedule : str or None
         ``None`` uses the default for the preconditioner (AdaGrad for
-        ``None``, Robbins-Monro for ``"lbfgs"``). ``"robbins-monro"`` uses
-        ``stepsize / (|attractive|_max * sqrt(1+t))``. ``"constant"`` uses
-        fixed ``stepsize``. ``"adagrad"`` uses AdaGrad+momentum.
+        ``None``, Robbins-Monro for ``"lbfgs"``, constant for ``"svn"`` --
+        ``"svn"`` already Newton-preconditions the full displacement, so
+        ``stepsize`` there acts as a damped-Newton step fraction rather than
+        needing the Robbins-Monro decay a noisier direction would).
+        ``"robbins-monro"`` uses ``stepsize / (|attractive|_max *
+        sqrt(1+t))``. ``"constant"`` uses fixed ``stepsize``. ``"adagrad"``
+        uses AdaGrad+momentum -- not supported together with
+        ``preconditioner="svn"`` (AdaGrad recomputes its own step from the
+        raw kernel/gradient terms and would silently ignore the Newton
+        preconditioning).
     temperature_schedule : str, callable, or None
         Anneals the data-misfit gradient contribution: the (preconditioned,
         sigma-scaled) gradient is multiplied by a temperature in ``(0, 1]``
@@ -211,6 +259,8 @@ class SVGDConfig(Generic[FloatDType]):
     bandwidth: float = -1
     preconditioner: str | None = None
     lbfgs: LBFGSConfig = field(default_factory=LBFGSConfig)
+    svn: SVNConfig = field(default_factory=SVNConfig)
+    hessian_vector_product: "HessianVectorProductFn[FloatDType] | None" = None
     step_schedule: str | None = None
     temperature_schedule: "str | Callable[[int], float] | None" = None
     sigma: SigmaConfig = field(default_factory=SigmaConfig)

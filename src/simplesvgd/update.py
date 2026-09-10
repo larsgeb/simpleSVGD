@@ -18,6 +18,7 @@ from .config import SVGDConfig
 from .kernels import rbf_kernel, rbf_kernel_normalized
 from .lbfgs import LBFGSState, lbfgs_direction, lbfgs_update, make_lbfgs_state
 from .state import SVGDState
+from .svn import svn_direction
 
 # AdaGrad's momentum and fudge factor aren't user-configurable -- they're
 # implementation details of the legacy default preconditioner, not knobs.
@@ -73,7 +74,17 @@ def _resolve_kernel_fn(kernel: "str | KernelFn[FloatDType] | None") -> KernelFn[
 def _resolve_step_schedule(step_schedule: str | None, preconditioner: str | None) -> str:
     if step_schedule is not None:
         return step_schedule
-    return "robbins-monro" if preconditioner == "lbfgs" else "adagrad"
+    if preconditioner == "lbfgs":
+        return "robbins-monro"
+    # "svn" already Newton-preconditions the full displacement (not just a
+    # raw gradient, unlike "lbfgs"), so it wants a fixed step fraction of a
+    # genuine Newton step -- the same role stepsize plays in damped Newton's
+    # method -- rather than an additional, unrelated 1/sqrt(iteration) decay
+    # designed for a noisy stochastic-approximation direction. Since phi is
+    # already ~0 near convergence, "constant" doesn't reintroduce the
+    # non-decaying-step jitter that's the reason "adagrad" isn't the default
+    # anywhere curvature information is available.
+    return "constant" if preconditioner == "svn" else "adagrad"
 
 
 def _resolve_temperature_fn(
@@ -427,7 +438,7 @@ def _compute_displacement(
     raise ValueError(f"Unknown step_schedule: {step_schedule!r}")
 
 
-def update(  # noqa: PLR0915 -- single orchestration point for the whole run loop; splitting it further would scatter closely-coupled loop state across more helper signatures than it'd save in readability
+def update(  # noqa: C901, PLR0912, PLR0915 -- single orchestration point for the whole run loop; splitting it further would scatter closely-coupled loop state across more helper signatures than it'd save in readability
     x0: npt.NDArray[FloatDType],
     gradient_fn: "GradientFn[FloatDType] | MinibatchGradientFn[FloatDType]",
     config: SVGDConfig[FloatDType] | None = None,
@@ -471,10 +482,19 @@ def update(  # noqa: PLR0915 -- single orchestration point for the whole run loo
         config = SVGDConfig()
     if config.minibatch_sampler is not None and config.sigma.n_data_samples is None:
         raise ValueError("n_data_samples is required when minibatch_sampler is set")
+    use_svn = config.preconditioner == "svn"
+    if use_svn and config.hessian_vector_product is None:
+        raise ValueError("hessian_vector_product is required when preconditioner='svn'")
 
     kernel_fn = _resolve_kernel_fn(config.kernel)
     needs_misfits = config.sigma.value is not None or config.sigma.estimate
     step_schedule = _resolve_step_schedule(config.step_schedule, config.preconditioner)
+    if use_svn and step_schedule == "adagrad":
+        raise ValueError(
+            "step_schedule='adagrad' is not supported with preconditioner='svn' -- "
+            "AdaGrad recomputes its own step from the raw kernel/gradient terms and "
+            "would silently ignore the Newton-preconditioned direction"
+        )
     temperature_fn = _resolve_temperature_fn(config.temperature_schedule, config.n_iter)
     use_lbfgs = config.preconditioner == "lbfgs"
 
@@ -539,6 +559,10 @@ def update(  # noqa: PLR0915 -- single orchestration point for the whole run loo
             attractive = np.matmul(kernel_matrix, grads_scaled)
             phi = -(attractive - kernel_grad) / run.n_particles
             _record_repulsion_ratio(run, kernel_grad, attractive)
+
+            if use_svn:
+                assert config.hessian_vector_product is not None  # noqa: S101 -- checked above
+                phi = svn_direction(config.hessian_vector_product, run.particles, phi, config.svn)
 
             inputs = _StepInputs(
                 kernel_matrix=kernel_matrix,

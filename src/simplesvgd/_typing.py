@@ -5,9 +5,9 @@ functions and containers parametrized over it preserve whichever floating
 dtype (``np.float32``, ``np.float64``, ...) the caller passes in, rather than
 committing to one at the type level.
 
-``KernelFn``, ``GradientFn`` and ``Background`` live here (rather than in
-``update.py``, where they're used) so that both ``update.py`` and
-``config.py`` can import them without a circular import.
+``KernelFn``, ``GradientFn``, ``HessianVectorProductFn`` and ``Background``
+live here (rather than in ``update.py``, where they're used) so that both
+``update.py`` and ``config.py`` can import them without a circular import.
 """
 
 from collections.abc import Callable
@@ -25,6 +25,10 @@ KernelFn = Callable[
 GradientFn = Callable[
     [npt.NDArray[FloatDType]],
     npt.NDArray[FloatDType] | tuple[npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
+]
+HessianVectorProductFn = Callable[
+    [npt.NDArray[FloatDType], npt.NDArray[FloatDType]],
+    npt.NDArray[FloatDType],
 ]
 BatchIndices = npt.NDArray[np.integer[Any]]
 MinibatchGradientFn = Callable[

@@ -54,8 +54,7 @@ def rbf_kernel(
 
     kernel_grad = -np.matmul(kernel_matrix, particles)
     kernel_row_sums = np.sum(kernel_matrix, axis=1)
-    for i in range(particles.shape[1]):
-        kernel_grad[:, i] = kernel_grad[:, i] + np.multiply(particles[:, i], kernel_row_sums)
+    kernel_grad += particles * kernel_row_sums[:, None]
     kernel_grad = kernel_grad / (bandwidth ** 2)
     return (kernel_matrix, kernel_grad)
 
@@ -76,7 +75,7 @@ def rbf_kernel_normalized(
     preserving repulsion in spaces with thousands of dimensions (e.g. FWI
     parameter vectors).
     """
-    n_particles, n_dims = particles.shape
+    n_particles = particles.shape[0]
 
     # Per-dimension normalization
     std = np.std(particles, axis=0)
@@ -102,10 +101,7 @@ def rbf_kernel_normalized(
     # Kernel gradient in normalized space
     kernel_grad_normalized = -np.matmul(kernel_matrix, particles_normalized)
     kernel_row_sums = np.sum(kernel_matrix, axis=1)
-    for i in range(n_dims):
-        kernel_grad_normalized[:, i] = kernel_grad_normalized[:, i] + np.multiply(
-            particles_normalized[:, i], kernel_row_sums
-        )
+    kernel_grad_normalized += particles_normalized * kernel_row_sums[:, None]
     kernel_grad_normalized = kernel_grad_normalized / (bandwidth ** 2)
 
     # Map gradient back to original space: d/dx_k = (1/std_k) * d/dx_n_k
@@ -173,8 +169,7 @@ def make_mass_weighted_kernel(weights: npt.NDArray[np.floating[Any]]) -> "Kernel
         # weights (the M-quadratic form's gradient is M(x-y), not (x-y)).
         kernel_grad = -np.matmul(kernel_matrix, particles)
         kernel_row_sums = np.sum(kernel_matrix, axis=1)
-        for i in range(particles.shape[1]):
-            kernel_grad[:, i] = kernel_grad[:, i] + np.multiply(particles[:, i], kernel_row_sums)
+        kernel_grad += particles * kernel_row_sums[:, None]
         kernel_grad = kernel_grad * w / (bandwidth ** 2)
         return (kernel_matrix, kernel_grad)
 

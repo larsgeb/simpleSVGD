@@ -145,7 +145,10 @@ user-configurable; use `step_schedule="constant"` or
 `step_schedule="robbins-monro"` if you need different step-size behavior.
 See the [API reference](api.md) for the full set of `SVGDConfig` fields,
 including L-BFGS preconditioning, hierarchical sigma estimation, bounds,
-callbacks, and the legacy live-scatter animation.
+callbacks, and the legacy live-scatter animation. If your problem has many
+more parameters than particles -- the regime PDE-constrained inverse problems
+live in -- read [SVGD in high dimensions](high-dimensional.md) before tuning
+anything here; the knobs on this page are not the binding constraint there.
 
 This tutorial is also available as a rendered notebook under
 [Notebooks](notebooks/Tutorial%20on%20using%20simplesvgd.ipynb), alongside a

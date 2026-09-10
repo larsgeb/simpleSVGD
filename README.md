@@ -242,6 +242,15 @@ normalized RBF, recommended above ~100 dimensions) or a
 repulsion time to spread particles out before the full posterior sharpens
 around a mode).
 
+When there are far more parameters than particles -- PDE-constrained inverse
+problems such as full-waveform inversion, where `d` is in the thousands and
+`n` in the tens -- those knobs are not enough on their own, because `n`
+particles can only span `n-1` directions no matter how the kernel is built.
+[SVGD in high dimensions](https://larsgeb.github.io/simpleSVGD/high-dimensional/)
+covers what actually helps there (prior whitening, reducing to the
+likelihood-informed subspace, curvature-aware kernel metrics) with benchmarks
+against analytic ground truth.
+
 
 # The origins of SVGD
 SVGD is a general purpose variational inference algorithm that forms a natural

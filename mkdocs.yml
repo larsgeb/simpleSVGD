@@ -13,11 +13,14 @@ exclude_docs: |
   assets/rerun/annealing_demo.py
   assets/rerun/lbfgs_demo.py
   assets/rerun/variance_collapse_demo.py
+  assets/benchmarks/svn_variants.py
+  assets/benchmarks/dimension_reduction.py
 
 nav:
   - Home: index.md
   - Live demo: live-demo.md
   - Advanced demos: advanced-demos.md
+  - High dimensions: high-dimensional.md
   - Notebooks:
       - Tutorial: notebooks/Tutorial on using simplesvgd.ipynb
       - PyTorch bridge: notebooks/Using SVGD + Torch algorithms.ipynb
